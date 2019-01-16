@@ -9,6 +9,7 @@ import soundfile as sf
 import argparse
 from scipy.io import wavfile
 import librosa
+import utils
 
 
 def get_files(dir, extension):
@@ -64,7 +65,7 @@ class AudioFolder(torch.utils.data.Dataset):
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--ext', type=str, default="wav")
 parser.add_argument('--lib', type=str, default="librosa")
-parser.add_argument('--nsamples', type=int, default=1024)
+parser.add_argument('--nsamples', type=int, default=64)
 args = parser.parse_args()
 
 data = torch.utils.data.DataLoader(
@@ -77,7 +78,7 @@ data = torch.utils.data.DataLoader(
 start = time.time()
 
 for X in data:
-    X.mean()
+    X.max()
 
 end = time.time()
 
