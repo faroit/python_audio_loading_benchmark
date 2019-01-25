@@ -31,11 +31,11 @@ def audio_to_tensor(fp, lib="librosa"):
     elif lib == "soundfile":
         sig, _ = sf.read(fp)
     elif lib == "scipy":
-        rate, sig = wavfile.read(fp)
+        _, sig = wavfile.read(fp)
     elif lib == "librosa":
-        sig, sr = librosa.load(fp)
+        sig, _ = librosa.load(fp)
     elif lib == "ffmpeg_call":
-        sig, sr = ffmpeg_load_audio(fp)
+        sig, _ = utils.ffmpeg_load_audio(fp)
     return torch.FloatTensor(sig).view(1, 1, -1)
 
 
@@ -61,25 +61,43 @@ class AudioFolder(torch.utils.data.Dataset):
     def __len__(self):
         return self.max_len
 
-
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--ext', type=str, default="wav")
-parser.add_argument('--lib', type=str, default="librosa")
-parser.add_argument('--nsamples', type=int, default=64)
+parser.add_argument('--nsamples', type=int, default=25)
 args = parser.parse_args()
 
-data = torch.utils.data.DataLoader(
-    AudioFolder(
-        'audio', max_len=args.nsamples, lib=args.lib, extension=args.ext
-    ),
-    batch_size=1
-)
+columns = [
+    'ext',
+    'lib',
+    'duration',
+    'time',
+]
 
-start = time.time()
+store = utils.DF_writer(columns)
 
-for X in data:
-    X.max()
+libs = ['torchaudio', 'librosa', 'soundfile', 'scipy', 'ffmpeg_call']
+for lib in libs:
+    for root, dirs, fnames in sorted(os.walk('audio')):
+        for audio_dir in dirs:
+            duration = int(audio_dir)
+            data = torch.utils.data.DataLoader(
+                AudioFolder(
+                    os.path.join(root, audio_dir), max_len=args.nsamples, lib=lib, extension=args.ext
+                ),
+                batch_size=1
+            )
+            start = time.time()
 
-end = time.time()
+            for X in data:
+                X.max()
 
-print(end - start)
+            end = time.time()
+
+            store.append(
+                ext=args.ext,
+                lib=lib,
+                duration=duration,
+                time=float(end-start),
+            )
+
+print(store.df)
