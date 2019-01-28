@@ -10,6 +10,8 @@ import argparse
 from scipy.io import wavfile
 import librosa
 import utils
+import seaborn as sns
+import matplotlib.pyplot as plt
 
 
 def get_files(dir, extension):
@@ -33,7 +35,7 @@ def audio_to_tensor(fp, lib="librosa"):
     elif lib == "scipy":
         _, sig = wavfile.read(fp)
     elif lib == "librosa":
-        sig, _ = librosa.load(fp)
+        sig, _ = librosa.load(fp, sr=None)
     elif lib == "ffmpeg_call":
         sig, _ = utils.ffmpeg_load_audio(fp)
     return torch.FloatTensor(sig).view(1, 1, -1)
@@ -63,7 +65,7 @@ class AudioFolder(torch.utils.data.Dataset):
 
 parser = argparse.ArgumentParser(description='Process some integers.')
 parser.add_argument('--ext', type=str, default="wav")
-parser.add_argument('--nsamples', type=int, default=25)
+parser.add_argument('--nsamples', type=int, default=50)
 args = parser.parse_args()
 
 columns = [
@@ -75,29 +77,39 @@ columns = [
 
 store = utils.DF_writer(columns)
 
-libs = ['torchaudio', 'librosa', 'soundfile', 'scipy', 'ffmpeg_call']
+libs = ['torchaudio', 'soundfile', 'librosa', 'scipy', 'ffmpeg_call']
 for lib in libs:
     for root, dirs, fnames in sorted(os.walk('audio')):
         for audio_dir in dirs:
-            duration = int(audio_dir)
-            data = torch.utils.data.DataLoader(
-                AudioFolder(
-                    os.path.join(root, audio_dir), max_len=args.nsamples, lib=lib, extension=args.ext
-                ),
-                batch_size=1
-            )
-            start = time.time()
+            try:
+                duration = int(audio_dir)
+                data = torch.utils.data.DataLoader(
+                    AudioFolder(
+                        os.path.join(root, audio_dir), max_len=args.nsamples, lib=lib, extension=args.ext
+                    ),
+                    batch_size=1
+                )
+                start = time.time()
 
-            for X in data:
-                X.max()
+                for X in data:
+                    X.max()
 
-            end = time.time()
+                end = time.time()
 
-            store.append(
-                ext=args.ext,
-                lib=lib,
-                duration=duration,
-                time=float(end-start),
-            )
+                store.append(
+                    ext=args.ext,
+                    lib=lib,
+                    duration=duration,
+                    time=float(end-start),
+                )
+            except (ValueError, RuntimeError) as e:
+                continue
+
+sns.set_style("whitegrid")
 
 print(store.df)
+g = (sns.catplot(
+    x="duration", y="time", kind='point', hue='lib', sharey=False, data=store.df
+).add_legend())
+
+plt.show()
