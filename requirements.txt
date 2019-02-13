@@ -1,0 +1,15 @@
+scipy==1.2.0
+seaborn
+pandas
+tensorflow==1.12.0
+audioread==2.1.6
+librosa==0.6.2
+SoundFile==0.10.2
+torch==1.0.0
+pydub==0.23.1
+aubio==0.4.8
+ipython
+torchvision
+pymad
+cffi
+PyGObject==3.30.4
