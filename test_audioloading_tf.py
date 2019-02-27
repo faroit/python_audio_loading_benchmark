@@ -48,16 +48,16 @@ if __name__ == "__main__":
     store = utils.DF_writer(columns)
 
     libs = [
-        'ar_gstreamer',
-        'ar_ffmpeg',
-        'ar_mad',
-        'aubio',
-        'pydub',
+        # 'ar_gstreamer',
+        # 'ar_ffmpeg',
+        # 'ar_mad',
+        # 'aubio',
+        # 'pydub',
         'tf_decode', 
-        'soundfile', 
-        'librosa', 
-        'scipy',
-        'scipy_mmap'
+        # 'soundfile', 
+        # 'librosa', 
+        # 'scipy',
+        # 'scipy_mmap'
     ]
 
     for lib in libs:
@@ -68,28 +68,31 @@ if __name__ == "__main__":
                     duration = int(audio_dir)
                     audio_files = get_files(dir=os.path.join(root, audio_dir), extension=args.ext)
 
-                    with tf.Session() as sess:
-                        dataset = tf.data.Dataset.from_tensor_slices(audio_files)
-                        if lib == "tf_decode":
-                            dataset = dataset.map(loaders.load_tf_decode)
-                        else:
-                            loader_function = getattr(loaders, 'load_' + lib)
-                            dataset = dataset.map(
-                                lambda filename: tf.py_func(
-                                    _make_py_loader_function(loader_function), 
-                                    [filename], 
-                                    [tf.float32]
-                                )
+                    dataset = tf.data.Dataset.from_tensor_slices(audio_files)
+                    if lib == "tf_decode":
+                        dataset = dataset.map(lambda x: loaders.load_tf_decode(x, args.ext))
+                    else:
+                        loader_function = getattr(loaders, 'load_' + lib)
+                        dataset = dataset.map(
+                            lambda filename: tf.py_func(
+                                _make_py_loader_function(loader_function), 
+                                [filename], 
+                                [tf.float32]
                             )
+                        )
 
-                        dataset = dataset.batch(1)
-                        start = time.time()
-                        iterator = dataset.make_one_shot_iterator()
-                        next_audio = iterator.get_next()
+                    dataset = dataset.batch(1)
+                    start = time.time()
+                    iterator = dataset.make_one_shot_iterator()
+                    next_audio = iterator.get_next()
+                    with tf.Session() as sess:
                         for i in range(len(audio_files)):
-                            value = sess.run(tf.reduce_max(next_audio))
+                            try:
+                                value = sess.run(tf.reduce_max(next_audio))
+                            except tf.errors.OutOfRangeError:
+                                break
 
-                        end = time.time()
+                    end = time.time()
                     
                     store.append(
                         ext=args.ext,
