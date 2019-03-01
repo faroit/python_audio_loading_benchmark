@@ -5,8 +5,8 @@ import audioread.maddec
 import audioread.ffdec
 import matplotlib.pyplot as plt
 import soundfile as sf
-from pydub import AudioSegment
 import aubio
+from pydub import AudioSegment
 import torchaudio
 import numpy as np
 import tensorflow as tf

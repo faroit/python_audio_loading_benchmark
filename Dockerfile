@@ -42,9 +42,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
          rm -rf /var/lib/apt/lists/*
 
 ADD requirements.txt /app/
+
+WORKDIR /app
+
+# install requirements, starting with pycairo because it fails in a different order
 RUN pip install pycairo
 RUN pip install --requirement /app/requirements.txt
 
-WORKDIR /app
-RUN git clone https://github.com/pytorch/audio.git
-RUN cd audio; python setup.py install
+# install aubio 0.4.9 from source for ffmpeg
+RUN git clone https://git.aubio.org/aubio/aubio aubio_src
+RUN cd aubio_src; git checkout 0.4.9
+RUN python setup.py clean; pip install -v .
+
+# install torchaudio from source
+RUN git clone https://github.com/pytorch/audio.git pytorchaudio
+RUN cd pytorchaudio; python setup.py install

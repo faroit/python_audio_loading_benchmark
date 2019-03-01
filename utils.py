@@ -14,6 +14,3 @@ class DF_writer(object):
         if set(self.columns) == set(row_data):
             s = pd.Series(row_data)
             self.df = self.df.append(s, ignore_index=True)
-
-    def df(self):
-        return self.df
