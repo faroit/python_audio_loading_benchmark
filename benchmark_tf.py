@@ -46,15 +46,15 @@ if __name__ == "__main__":
     store = utils.DF_writer(columns)
 
     libs = [
-        'ar_gstreamer',
-        'ar_ffmpeg',
-        'ar_mad',
-        'aubio',
-        'pydub',
-        'soundfile',
-        'librosa',
+        # 'ar_gstreamer',
+        # 'ar_ffmpeg',
+        # 'ar_mad',
+        # 'aubio',
+        # 'pydub',
+        # 'soundfile',
+        # 'librosa',
         'scipy',
-        'scipy_mmap'
+        'scipy_mmap',
         'tf_decode'
     ]
 
@@ -101,5 +101,5 @@ if __name__ == "__main__":
                 except:
                     continue
 
-    utils.plot_results(store.df, "np", args.ext)
+    utils.plot_results(store.df, "tf", args.ext)
 

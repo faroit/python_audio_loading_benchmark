@@ -71,7 +71,7 @@ if __name__ == "__main__":
         'soundfile', 
         'librosa', 
         'scipy',
-        'scipy_mmap'
+        'scipy_mmap',
         'torchaudio'
     ]
 
@@ -107,4 +107,4 @@ if __name__ == "__main__":
                     continue
 
 
-    utils.plot_results(store.df, "np", args.ext)
+    utils.plot_results(store.df, "pytorch", args.ext)
