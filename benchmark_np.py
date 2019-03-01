@@ -1,17 +1,13 @@
 import matplotlib
-matplotlib.use('agg')
-import torch.utils
+matplotlib.use('Agg')
 import os
 import os.path
 import random
 import time
 import argparse
-import librosa
 import utils
 import loaders
-import seaborn as sns
-import torch
-import matplotlib.pyplot as plt
+import numpy as np
 
 
 def get_files(dir, extension):
@@ -26,7 +22,7 @@ def get_files(dir, extension):
     return audio_files
 
 
-class AudioFolder(torch.utils.data.Dataset):
+class AudioFolder(object):
     def __init__(
         self,
         root,
@@ -40,8 +36,7 @@ class AudioFolder(torch.utils.data.Dataset):
         self.loader_function = getattr(loaders, lib)
 
     def __getitem__(self, index):
-        audio = self.loader_function(self.audio_files[index])
-        return torch.FloatTensor(audio).view(1, 1, -1)
+        return self.loader_function(self.audio_files[index])
 
     def __len__(self):
         return len(self.audio_files)
@@ -70,7 +65,6 @@ if __name__ == "__main__":
         'ar_mad',
         'aubio',
         'pydub',
-        'torchaudio', 
         'soundfile', 
         'librosa', 
         'scipy',
@@ -83,53 +77,27 @@ if __name__ == "__main__":
             for audio_dir in dirs:
                 try:
                     duration = int(audio_dir)
-                    data = torch.utils.data.DataLoader(
-                        AudioFolder(
+                    dataset = AudioFolder(
                             os.path.join(root, audio_dir), 
                             lib='load_' + lib,
                             extension=args.ext
-                        ),
-                        batch_size=1,
-                        num_workers=0,
-                        shuffle=False
                     )
+                    
+                    
                     start = time.time()
 
-                    for X in data:
-                        X.max()
+                    for fp in dataset.audio_files:
+                        audio = dataset.loader_function(fp)
+                        np.max(audio)
 
                     end = time.time()
                     store.append(
                         ext=args.ext,
                         lib=lib,
                         duration=duration,
-                        time=float(end-start) / len(data),
+                        time=float(end-start) / len(dataset),
                     )
                 except:
                     continue
 
-
-    sns.set_style("whitegrid")
-
-    ordered_libs = store.df.time.groupby(
-        store.df.lib
-    ).mean().sort_values().index.tolist()
-
-    plt.subplot()
-
-    g = sns.catplot(
-        x="duration", 
-        y="time", 
-        kind='point',
-        hue_order=ordered_libs,
-        hue='lib', 
-        data=store.df,
-        height=6.6, 
-        aspect=1
-    )
-
-    plt.savefig('benchmark_pytorch.png')
-
-    plt.subplot()
-    sns.barplot(x="lib", y="time", data=store.df, order=ordered_libs)
-    plt.savefig("barplot_pytorch{}.png")
+    utils.plot_results(store.df, "np", args.ext)

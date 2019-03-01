@@ -10,8 +10,6 @@ import librosa
 import utils
 import loaders
 import tensorflow as tf
-import seaborn as sns
-import matplotlib.pyplot as plt
 
 
 def get_files(dir, extension):
@@ -53,11 +51,11 @@ if __name__ == "__main__":
         'ar_mad',
         'aubio',
         'pydub',
-        'tf_decode',
         'soundfile',
         'librosa',
         'scipy',
         'scipy_mmap'
+        'tf_decode'
     ]
 
     for lib in libs:
@@ -103,27 +101,5 @@ if __name__ == "__main__":
                 except:
                     continue
 
-    sns.set_style("whitegrid")
+    utils.plot_results(store.df, "np", args.ext)
 
-    ordered_libs = store.df.time.groupby(
-        store.df.lib
-    ).mean().sort_values().index.tolist()
-
-    plt.subplot()
-
-    g = sns.catplot(
-        x="duration", 
-        y="time", 
-        kind='point',
-        hue_order=ordered_libs,
-        hue='lib', 
-        data=store.df,
-        height=6.6, 
-        aspect=1
-    )
-
-    plt.savefig('benchmark_tf.png')
-
-    plt.subplot()
-    sns.barplot(x="lib", y="time", data=store.df, order=ordered_libs)
-    plt.savefig("barplot_tf.png")
