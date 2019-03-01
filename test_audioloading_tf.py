@@ -33,7 +33,7 @@ def _make_py_loader_function(func):
 
 
 if __name__ == "__main__":
-    
+
     parser = argparse.ArgumentParser(description='Benchmark audio loading in tensorflow')
     parser.add_argument('--ext', type=str, default="wav")
     args = parser.parse_args()
@@ -48,16 +48,16 @@ if __name__ == "__main__":
     store = utils.DF_writer(columns)
 
     libs = [
-        # 'ar_gstreamer',
-        # 'ar_ffmpeg',
-        # 'ar_mad',
-        # 'aubio',
-        # 'pydub',
-        'tf_decode', 
-        # 'soundfile', 
-        # 'librosa', 
-        # 'scipy',
-        # 'scipy_mmap'
+        'ar_gstreamer',
+        'ar_ffmpeg',
+        'ar_mad',
+        'aubio',
+        'pydub',
+        'tf_decode',
+        'soundfile',
+        'librosa',
+        'scipy',
+        'scipy_mmap'
     ]
 
     for lib in libs:
