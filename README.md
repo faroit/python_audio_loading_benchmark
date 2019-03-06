@@ -1,5 +1,19 @@
-# Deep Learning Audio-Loading Benchmark
+# Python Audio-Loading Benchmark
 
+| Library                 | Loader Function Name  | Output Type       | Python Interface  | Supported formats  |
+|-------------------------|-----------------------|-------------------|-------------------| -------------------|
+| scipy.io.wavfile        | [`scipy`](loader.py)  | Numpy Array       | Native/Numpy      | WAV/PCM (16 bit)   |
+| scipy.io.wavfile memmap | [`scipy_mmap`](loader.py) | Numpy Mem Map | Native/Numpy      | WAV/PCM (16 bit)   |
+| soundfile               | [`soundfile`](loader.py) | Numpy Array    | CFFI              | WAV/PCM, Ogg, Flac |
+| pydub               | [`pydub`](loader.py) | Python Array    | Native for WAV, Converting with ffmpeg for others | WAV/PCM, Ogg, Flac |
+
+## Results
+
+### WAV/PCM
+![](results/benchmark_np_wav_bar.png)
+
+### MP3
+![](results/benchmark_np_mp3_bar.png)
 
 ## Audio Loading landscape
 
