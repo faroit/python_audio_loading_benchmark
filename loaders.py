@@ -102,6 +102,9 @@ def load_pydub(fp):
 
 
 def load_librosa(fp):
+    """Librosa audio loading is using 
+    """
+    # loading with `sr=None` is disabling the internal resampling
     sig, rate = librosa.load(fp, sr=None)
     return sig
 
