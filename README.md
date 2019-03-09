@@ -4,7 +4,7 @@ Today, machine learning models for audio often work with raw (time domain) audio
 
 ## Libraries
 
-| Library                 | Short-Name            | Out Type          | Supported codecs  | Excerpts/Seeking |
+| Library                 | Short-Name/Code          | Out Type          | Supported codecs  | Excerpts/Seeking |
 |-------------------------|-----------------------|-------------------|-------------------| -----------------|
 | scipy.io.wavfile        | [`scipy`](loader.py)       | Native/Numpy      | PCM (only 16 bit)   | ❌        |
 | scipy.io.wavfile memmap | [`scipy_mmap`](loader.py)  | Native/Numpy      | PCM (only 16 bit)   | ✅        |
