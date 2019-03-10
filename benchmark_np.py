@@ -101,3 +101,4 @@ if __name__ == "__main__":
                     continue
 
     utils.plot_results(store.df, "np", args.ext)
+    store.df.to_pickle("benchmark_%s_%s.pickle" % ("np", args.ext))
