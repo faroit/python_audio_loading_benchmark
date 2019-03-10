@@ -107,5 +107,4 @@ if __name__ == "__main__":
                     continue
 
 
-    utils.plot_results(store.df, "pytorch", args.ext)
-    store.df.to_pickle("benchmark_%s_%s.pickle" % ("pytorch", args.ext))
+    store.df.to_pickle("results/benchmark_%s_%s.pickle" % ("pytorch", args.ext))

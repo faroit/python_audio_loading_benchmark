@@ -100,5 +100,4 @@ if __name__ == "__main__":
                 except:
                     continue
 
-    utils.plot_results(store.df, "np", args.ext)
-    store.df.to_pickle("benchmark_%s_%s.pickle" % ("np", args.ext))
+    store.df.to_pickle("results/benchmark_%s_%s.pickle" % ("np", args.ext))
