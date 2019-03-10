@@ -33,15 +33,15 @@ The benchmark loads a number of (single channel) audio files of different length
 
 __All results shown below, depict loading time __in seconds__ for wav and mp3 files.__
 
-### Numpy
+### Load to Numpy Tensor
 
 ![](results/benchmark_np.png)
 
-### PyTorch
+### Load to PyTorch Tensor
 
 ![](results/benchmark_pytorch.png)
 
-### Tensorflow
+### Load to Tensorflow Tensor
 
 ![](results/benchmark_tf.png)
 
