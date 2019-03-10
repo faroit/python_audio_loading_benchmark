@@ -6,24 +6,24 @@ Today, machine learning models for audio often work with raw (time domain) audio
 
 | Library                 | Short-Name/Code          | Out Type          | Supported codecs  | Excerpts/Seeking |
 |-------------------------|-----------------------|-------------------|-------------------| -----------------|
-| scipy.io.wavfile        | [`scipy`](loader.py)       | Native/Numpy      | PCM (only 16 bit)   | ❌        |
-| scipy.io.wavfile memmap | [`scipy_mmap`](loader.py)  | Native/Numpy      | PCM (only 16 bit)   | ✅        |
-| soundfile               | [`soundfile`](loader.py)   | CFFI              | PCM, Ogg, Flac | ✅             |
-| pydub               | [`pydub`](loader.py) | Python Array |  PCM, MP3, OGG or other ffmpeg/avconv supported codec | ❌ |
-| aubio               | [`aubio`](loader.py) | Numpy Array | PCM, MP3, OGG or other avconv supported code |  ✅ |
-| audioread           | [`ar_mad`](loader.py) | Numpy Array | ffmpeg | ✅ |
-| audioread           | [`ar_gstreamer`](loader.py) | Numpy Array | ffmpeg | ✅ |
-| audioread           | [`ar_ffmpeg`](loader.py) | Numpy Array | ffmpeg | ✅ |
-| librosa             | [`librosa`](loader.py) | Numpy Array | relies in audioread |  ✅ |
-| tensorflow 1.8 decode | [`tf_decode`](loader.py) | Tensorflow Tensor | All codecs supported by FFMPEG |  ✅ |
-| torchaudio | [`torchaudio`](loader.py) | PyTorch Tensor | all codecs supported by Sox |  ✅ |
+| [scipy.io.wavfile](https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.io.wavfile.read.html#scipy.io.wavfile.read)        | [`scipy`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L55)       | Numpy      | PCM (only 16 bit)   | ❌        |
+| [scipy.io.wavfile memmap](https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.io.wavfile.read.html#scipy.io.wavfile.read) | [`scipy_mmap`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L61)  | Numpy      | PCM (only 16 bit)   | ✅        |
+| [soundfile](https://pysoundfile.readthedocs.io/en/0.9.0/) ([libsndfile](http://www.mega-nerd.com/libsndfile/))    | [`soundfile`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L50)   | Numpy   | PCM, Ogg, Flac | ✅             |
+| [pydub](https://github.com/jiaaro/pydub)  | [`pydub`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L97) | Python Array |  PCM, MP3, OGG or other FFMPEG/libav supported codec | ❌ |
+| [aubio](https://github.com/aubio/aubio)  | [`aubio`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L32) | Numpy Array | PCM, MP3, OGG or other avconv supported code |  ✅ |
+| [audioread](https://github.com/beetbox/audioread) ([libmad](https://www.underbit.com/products/mad/))           | [`ar_mad`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L77) | Numpy Array | FFMPEG | ✅ |
+| [audioread](https://github.com/beetbox/audioread) ([gstreamer](https://gstreamer.freedesktop.org/))         | [`ar_gstreamer`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L67) | Numpy Array | all of FFMPEG | ✅ |
+| [audioread](https://github.com/beetbox/audioread) ([FFMPEG](https://www.ffmpeg.org/))            | [`ar_ffmpeg`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L87) | Numpy Array | all of FFMPEG | ✅ |
+| [librosa](https://librosa.github.io/)             | [`librosa`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L104) | Numpy Array | relies on audioread |  ✅ |
+| [tensorflow 1.13 `contrib.ffmpeg`](https://www.tensorflow.org/api_docs/python/tf/contrib/ffmpeg/decode_audio) | [`tf_decode`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L21) | Tensorflow Tensor | All codecs supported by FFMPEG |  ✅ |
+| [torchaudio](https://github.com/pytorch/audio) | [`torchaudio`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L45) | PyTorch Tensor | all codecs supported by Sox |  ✅ |
 
 ## Libraries not tested
 
-* python wav
-* audioread coreaudio
-* madmom: same ffmpeg interface as `ar_ffmpeg`
-* tensorflow 2.0
+* __[audioread (coreaudio)](https://github.com/beetbox/audioread/blob/master/audioread/macca.py)__: only available on macOS.
+* __[madmom](https://github.com/CPJKU/madmom):__ same ffmpeg interface as `ar_ffmpeg`.
+* __[tensorflow 2 `decode_wav`](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/audio/decode_wav):__ Not released yet.
+* __[python builtin `wave`](https://docs.python.org/3.7/library/wave.html)__: TODO
 
 ## Numpy
 
