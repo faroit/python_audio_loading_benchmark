@@ -72,8 +72,10 @@ if __name__ == "__main__":
         'librosa', 
         'scipy',
         'scipy_mmap',
-        'torchaudio'
     ]
+
+    if args.ext != "mp4":
+        libs.append('torchaudio')
 
     for lib in libs:
         print("Testing: %s" % lib)

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 for package in ['pytorch', 'tf', 'np']:
     dfs = []
     for ext in ["wav", "mp3", "mp4", "ogg", "flac"]:
-        dfs.append(pd.read_pickle("results/benchmark_%s_%ext.pickle" % (package, ext)))
+        dfs.append(pd.read_pickle("results/benchmark_%s_%s.pickle" % (package, ext)))
 
     df = pd.concat(dfs, ignore_index=True)
 
