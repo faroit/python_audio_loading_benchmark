@@ -49,8 +49,5 @@ WORKDIR /app
 RUN pip install pycairo
 RUN pip install --requirement /app/requirements.txt
 
-# install aubio 0.4.9 from source for ffmpeg
-RUN git clone https://git.aubio.org/aubio/aubio aubio_src && cd aubio_src && git checkout 0.4.9 && ./setup.py clean && pip install -v .
-
 # install torchaudio from source
 RUN git clone https://github.com/pytorch/audio.git pytorchaudio && cd pytorchaudio && python setup.py install
