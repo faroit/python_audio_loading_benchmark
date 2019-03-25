@@ -45,6 +45,16 @@ __All results shown below, depict loading time __in seconds__ for wav and mp3 fi
 
 ![](results/benchmark_tf.png)
 
+### Getting metadata information
+
+In addition to loading the file, one might also be interested in extracting
+metadata. To benchmark this we asked for every file to provide metadata for
+*sampling rate*, *channels*, *samples*, and *duration*. All in consecutive
+calls, which means the file is not allowed to be opened once and extract all
+metadata together. Note, that we have excluded `pydub` from the benchmark
+results on metadata as it was significantly slower than the other tools.
+
+![](results/benchmark_metadata.png)
 
 ## Running the Benchmark
 

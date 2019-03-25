@@ -5,6 +5,7 @@ librosa==0.6.2
 SoundFile==0.10.2
 torch==1.0.1
 pydub==0.23.1
+sox==1.3.7
 PyGObject==3.30.4
 seaborn
 pandas
