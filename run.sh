@@ -7,4 +7,5 @@ do
     python benchmark_np.py --ext "$i"
     python benchmark_pytorch.py --ext "$i"
     python benchmark_tf.py --ext "$i"
+    python benchmark_metadata.py --ext "$i"
 done

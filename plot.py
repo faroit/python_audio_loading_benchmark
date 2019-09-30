@@ -3,7 +3,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 
-for package in ['pytorch', 'tf', 'np']:
+for package in ['pytorch', 'tf', 'np', 'metadata']:
     dfs = []
     for ext in ["wav", "mp3", "mp4", "ogg", "flac"]:
         dfs.append(pd.read_pickle("results/benchmark_%s_%s.pickle" % (package, ext)))

@@ -11,6 +11,7 @@ import torchaudio
 import numpy as np
 import tensorflow as tf
 import librosa
+import sox
 
 """
 Some of the code taken from: 
@@ -118,3 +119,73 @@ def _convert_buffer_to_float(buf, n_bytes=2, dtype=np.float32):
     # Rescale and format the data buffer
     out = scale * np.frombuffer(buf, fmt).astype(dtype)
     return out
+
+
+def info_soundfile(fp):
+    info = {}
+    info['duration'] = sf.info(fp).duration
+    info['samples'] = int(sf.info(fp).duration * sf.info(fp).samplerate)
+    info['channels'] = sf.info(fp).channels
+    info['sampling_rate'] = sf.info(fp).samplerate
+    return info
+
+
+def info_audioread(fp):
+    info = {}
+    with audioread.audio_open(fp) as f:
+        info['duration'] = f.duration
+    with audioread.audio_open(fp) as f:
+        info['samples'] = int(f.duration * f.samplerate)
+    with audioread.audio_open(fp) as f:
+        info['channels'] = f.channels
+    with audioread.audio_open(fp) as f:
+        info['sampling_rate'] = f.samplerate
+    return info
+
+
+def info_aubio(fp):
+    info = {}
+    with aubio.source(fp) as f:
+        info['duration'] = f.duration / f.samplerate
+    with aubio.source(fp) as f:
+        info['samples'] = f.duration
+    with aubio.source(fp) as f:
+        info['channels'] = f.channels
+    with aubio.source(fp) as f:
+        info['sampling_rate'] = f.samplerate
+    return info
+
+
+def info_sox(fp):
+    info = {}
+    info['duration'] = sox.file_info.duration(fp)
+    info['samples'] = sox.file_info.num_samples(fp)
+    info['channels'] = sox.file_info.channels(fp)
+    info['sampling_rate'] = int(sox.file_info.sample_rate(fp))
+    return info
+
+
+def info_pydub(fp):
+    info = {}
+    f = AudioSegment.from_file(fp)
+    info['duration'] = f.duration_seconds
+    f = AudioSegment.from_file(fp)
+    info['samples'] = int(f.frame_count())
+    f = AudioSegment.from_file(fp)
+    info['channels'] = f.channels
+    f = AudioSegment.from_file(fp)
+    info['sampling_rate'] = f.frame_rate
+    return info
+
+
+def info_torchaudio(fp):
+    info = {}
+    f, _ = torchaudio.info(fp)
+    info['duration'] = f.length / f.rate
+    f, _ = torchaudio.info(fp)
+    info['samples'] = f.length
+    f, _ = torchaudio.info(fp)
+    info['channels'] = f.channels
+    f, _ = torchaudio.info(fp)
+    info['sampling_rate'] = f.rate
+    return info
