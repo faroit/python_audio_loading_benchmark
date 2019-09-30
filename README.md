@@ -16,7 +16,7 @@ This is relevant for machine learning models that today often process raw (time 
 | [audioread](https://github.com/beetbox/audioread) ([libmad](https://www.underbit.com/products/mad/))  | 2.1.6 | [`ar_mad`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L77) | Numpy Array | FFMPEG | ❌ |
 | [audioread](https://github.com/beetbox/audioread) ([gstreamer](https://gstreamer.freedesktop.org/)) |2.1.6 | [`ar_gstreamer`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L67) |2.1.6 | Numpy Array | all of FFMPEG | ❌ |
 | [audioread](https://github.com/beetbox/audioread) ([FFMPEG](https://www.ffmpeg.org/)) | 2.1.6 | [`ar_ffmpeg`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L87) | Numpy Array | all of FFMPEG | ❌ |
-| [librosa](https://librosa.github.io/)  | 0.6.9 | [`librosa`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L104) | Numpy Array | relies on audioread |  ✅ |
+| [librosa](https://librosa.github.io/)  | 0.6.2 | [`librosa`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L104) | Numpy Array | relies on audioread |  ✅ |
 | [tensorflow 1.13 `contrib.ffmpeg`](https://www.tensorflow.org/api_docs/python/tf/contrib/ffmpeg/decode_audio) | 1.13 | [`tf_decode`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L21) | Tensorflow Tensor | All codecs supported by FFMPEG |  ❌ |
 | [torchaudio](https://github.com/pytorch/audio) | 0.3.0 | [`torchaudio`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L45) | PyTorch Tensor | all codecs supported by Sox |  ✅ |
 
