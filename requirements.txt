@@ -13,3 +13,4 @@ ipython
 torchvision
 pymad
 cffi
+aubio==0.4.9
