@@ -48,6 +48,3 @@ WORKDIR /app
 # install requirements, starting with pycairo because it fails in a different order
 RUN pip install pycairo
 RUN pip install --requirement /app/requirements.txt
-
-# install torchaudio from source
-RUN git clone https://github.com/pytorch/audio.git pytorchaudio && cd pytorchaudio && python setup.py install
