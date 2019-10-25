@@ -26,7 +26,7 @@ def get_files(dir, extension):
 
 def _make_py_loader_function(func):
     def _py_loader_function(fp):
-        return func(fp.decode())
+        return func(fp.numpy().decode())
     return _py_loader_function
 
 
@@ -55,7 +55,7 @@ if __name__ == "__main__":
         'librosa',
         'scipy',
         'scipy_mmap',
-        'tf_decode'
+        'tf_decode_wav'
     ]
 
     for lib in libs:
@@ -67,31 +67,30 @@ if __name__ == "__main__":
                     audio_files = get_files(dir=os.path.join(root, audio_dir), extension=args.ext)
 
                     dataset = tf.data.Dataset.from_tensor_slices(audio_files)
-                    if lib == "tf_decode":
-                        dataset = dataset.map(lambda x: loaders.load_tf_decode(x, args.ext))
+                    if lib == "tf_decode_wav":
+                        dataset = dataset.map(
+                            lambda x: loaders.load_tf_decode_wav(x, args.ext),
+                            num_parallel_calls=1
+                        )
                     else:
                         loader_function = getattr(loaders, 'load_' + lib)
                         dataset = dataset.map(
-                            lambda filename: tf.py_func(
+                            lambda filename: tf.py_function(
                                 _make_py_loader_function(loader_function), 
                                 [filename], 
                                 [tf.float32]
-                            )
+                            ),
+                            num_parallel_calls=1
                         )
 
                     dataset = dataset.batch(1)
                     start = time.time()
-                    iterator = dataset.make_one_shot_iterator()
-                    next_audio = iterator.get_next()
-                    with tf.Session() as sess:
-                        for i in range(len(audio_files)):
-                            try:
-                                value = sess.run(tf.reduce_max(next_audio))
-                            except tf.errors.OutOfRangeError:
-                                break
+
+                    for audio in dataset:
+                        value = tf.reduce_max(audio)
 
                     end = time.time()
-                    
+
                     store.append(
                         ext=args.ext,
                         lib=lib,
@@ -102,4 +101,3 @@ if __name__ == "__main__":
                     continue
 
     store.df.to_pickle("results/benchmark_%s_%s.pickle" % ("tf", args.ext))
-

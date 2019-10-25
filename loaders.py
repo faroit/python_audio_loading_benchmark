@@ -19,15 +19,9 @@ https://github.com/aubio/aubio/blob/master/python/demos/demo_reading_speed.py
 """
 
 
-def load_tf_decode(fp, ext="wav", rate=44100):
-    audio_binary = tf.read_file(fp)
-    audio_decoded = tf.contrib.ffmpeg.decode_audio(
-        audio_binary, 
-        file_format=ext, 
-        samples_per_second=rate, 
-        channel_count=1
-    )
-    return tf.cast(audio_decoded, tf.float32)
+def load_tf_decode_wav(fp, ext="wav", rate=44100):
+    audio, rate = tf.audio.decode_wav(tf.io.read_file(fp))
+    return tf.cast(audio, tf.float32)
 
 
 def load_aubio(fp):

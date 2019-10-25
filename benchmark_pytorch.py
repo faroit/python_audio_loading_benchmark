@@ -68,8 +68,8 @@ if __name__ == "__main__":
         'ar_mad',
         'aubio',
         'pydub',
-        'soundfile', 
-        'librosa', 
+        'soundfile',
+        'librosa',
         'scipy',
         'scipy_mmap',
     ]
@@ -85,7 +85,7 @@ if __name__ == "__main__":
                     duration = int(audio_dir)
                     data = torch.utils.data.DataLoader(
                         AudioFolder(
-                            os.path.join(root, audio_dir), 
+                            os.path.join(root, audio_dir),
                             lib='load_' + lib,
                             extension=args.ext
                         ),
@@ -107,6 +107,5 @@ if __name__ == "__main__":
                     )
                 except:
                     continue
-
 
     store.df.to_pickle("results/benchmark_%s_%s.pickle" % ("pytorch", args.ext))
