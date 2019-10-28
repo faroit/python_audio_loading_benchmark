@@ -32,7 +32,9 @@ def _make_py_loader_function(func):
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description='Benchmark audio loading in tensorflow')
+    parser = argparse.ArgumentParser(
+        description='Benchmark audio loading in tensorflow'
+    )
     parser.add_argument('--ext', type=str, default="wav")
     args = parser.parse_args()
 
@@ -55,49 +57,56 @@ if __name__ == "__main__":
         'librosa',
         'scipy',
         'scipy_mmap',
-        'tf_decode_wav'
+        'tf_decode_wav',
+        'tfio_fromaudio'
     ]
 
     for lib in libs:
         print("Testing: %s" % lib)
         for root, dirs, fnames in sorted(os.walk('AUDIO')):
             for audio_dir in dirs:
-                try:
-                    duration = int(audio_dir)
-                    audio_files = get_files(dir=os.path.join(root, audio_dir), extension=args.ext)
+                duration = int(audio_dir)
+                audio_files = get_files(
+                    dir=os.path.join(root, audio_dir),
+                    extension=args.ext
+                )
 
-                    dataset = tf.data.Dataset.from_tensor_slices(audio_files)
-                    if lib == "tf_decode_wav":
-                        dataset = dataset.map(
-                            lambda x: loaders.load_tf_decode_wav(x, args.ext),
-                            num_parallel_calls=1
-                        )
-                    else:
-                        loader_function = getattr(loaders, 'load_' + lib)
-                        dataset = dataset.map(
-                            lambda filename: tf.py_function(
-                                _make_py_loader_function(loader_function), 
-                                [filename], 
-                                [tf.float32]
-                            ),
-                            num_parallel_calls=1
-                        )
-
-                    dataset = dataset.batch(1)
-                    start = time.time()
-
-                    for audio in dataset:
-                        value = tf.reduce_max(audio)
-
-                    end = time.time()
-
-                    store.append(
-                        ext=args.ext,
-                        lib=lib,
-                        duration=duration,
-                        time=float(end-start) / len(audio_files),
+                dataset = tf.data.Dataset.from_tensor_slices(audio_files)
+                if lib == "tf_decode_wav":
+                    dataset = dataset.map(
+                        lambda x: loaders.load_tf_decode_wav(x, args.ext),
+                        num_parallel_calls=1
                     )
-                except:
-                    continue
+                elif lib == "tfio_fromaudio":
+                    dataset = dataset.map(
+                        lambda x: loaders.load_tfio_fromaudio(x),
+                        num_parallel_calls=1
+                    )
+                else:
+                    loader_function = getattr(loaders, 'load_' + lib)
+                    dataset = dataset.map(
+                        lambda filename: tf.py_function(
+                            _make_py_loader_function(loader_function),
+                            [filename],
+                            [tf.float32]
+                        ),
+                        num_parallel_calls=1
+                    )
+
+                dataset = dataset.batch(1)
+                start = time.time()
+
+                for audio in dataset:
+                    value = tf.reduce_max(audio)
+                    tf.print(value)
+
+                end = time.time()
+
+                store.append(
+                    ext=args.ext,
+                    lib=lib,
+                    duration=duration,
+                    time=float(end-start) / len(audio_files),
+                )
 
     store.df.to_pickle("results/benchmark_%s_%s.pickle" % ("tf", args.ext))

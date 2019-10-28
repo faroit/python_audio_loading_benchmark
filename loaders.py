@@ -1,6 +1,6 @@
 from scipy.io import wavfile
 import audioread.rawread
-import audioread.gstdec
+# import audioread.gstdec
 import audioread.maddec
 import audioread.ffdec
 import matplotlib.pyplot as plt
@@ -10,6 +10,7 @@ from pydub import AudioSegment
 import torchaudio
 import numpy as np
 import tensorflow as tf
+import tensorflow_io as tfio
 import librosa
 import sox
 
@@ -17,6 +18,10 @@ import sox
 Some of the code taken from: 
 https://github.com/aubio/aubio/blob/master/python/demos/demo_reading_speed.py
 """
+
+
+def load_tfio_fromaudio(fp):
+    return tfio.IOTensor.from_audio(fp)
 
 
 def load_tf_decode_wav(fp, ext="wav", rate=44100):
