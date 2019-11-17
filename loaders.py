@@ -20,8 +20,10 @@ https://github.com/aubio/aubio/blob/master/python/demos/demo_reading_speed.py
 """
 
 
+@tf.function
 def load_tfio_fromaudio(fp):
-    return tfio.IOTensor.from_audio(fp)
+    audio = tfio.IOTensor.graph(tf.int16).from_audio(fp)
+    return tf.cast(audio.to_tensor(), tf.float32) / 32767.0
 
 
 def load_tf_decode_wav(fp, ext="wav", rate=44100):
