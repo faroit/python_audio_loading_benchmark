@@ -88,6 +88,7 @@ if __name__ == "__main__":
                         num_parallel_calls=1
                     )
 
+                dataset = dataset.apply(tf.data.experimental.ignore_errors())
                 dataset = dataset.batch(1)
                 start = time.time()
 
