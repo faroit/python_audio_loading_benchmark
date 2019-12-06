@@ -72,9 +72,14 @@ if __name__ == "__main__":
                 )
 
                 dataset = tf.data.Dataset.from_tensor_slices(audio_files)
-                if lib in ["tf_decode_wav", "tfio_fromaudio"]:
+                if lib in ["tf_decode_wav"]:
                     dataset = dataset.map(
-                        lambda x: loaders.load_tf_decode_wav(x, args.ext),
+                        lambda x: loaders.load_tf_decode_wav(x),
+                        num_parallel_calls=1
+                    )
+                elif lib in ["tfio_fromaudio"]:
+                    dataset = dataset.map(
+                        lambda x: loaders.load_tfio_fromaudio(x),
                         num_parallel_calls=1
                     )
                 else:
