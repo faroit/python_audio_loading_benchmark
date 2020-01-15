@@ -103,7 +103,6 @@ if __name__ == "__main__":
 
                 for audio in dataset:
                     value = tf.reduce_max(audio)
-                    tf.print(value)
 
                 end = time.time()
 
