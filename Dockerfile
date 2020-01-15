@@ -34,8 +34,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
          libavutil-dev \
          libswresample-dev \
          libfftw3-dev \
-         libmad0 \
-         libmad0-dev \
          python-gst-1.0 \
          python3-gst-1.0 \
          libsndfile1 &&\
