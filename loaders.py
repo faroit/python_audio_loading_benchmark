@@ -1,7 +1,6 @@
 from scipy.io import wavfile
 import audioread.rawread
 import audioread.gstdec
-import audioread.maddec
 import audioread.ffdec
 import matplotlib.pyplot as plt
 import soundfile as sf
@@ -76,16 +75,6 @@ def load_scipy_mmap(fp):
 
 def load_ar_gstreamer(fp):
     with audioread.gstdec.GstAudioFile(fp) as f:
-        total_frames = 0
-        for buf in f:
-            sig = _convert_buffer_to_float(buf)
-            sig = sig.reshape(f.channels, -1)
-            total_frames += sig.shape[1]
-        return sig
-
-
-def load_ar_mad(fp):
-    with audioread.maddec.MadAudioFile(fp) as f:
         total_frames = 0
         for buf in f:
             sig = _convert_buffer_to_float(buf)
