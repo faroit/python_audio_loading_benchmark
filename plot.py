@@ -6,7 +6,9 @@ import matplotlib.pyplot as plt
 for package in ['pytorch', 'tf', 'np', 'metadata']:
     dfs = []
     for ext in ["wav", "mp3", "mp4", "ogg", "flac"]:
-        dfs.append(pd.read_pickle("results/benchmark_%s_%s.pickle" % (package, ext)))
+        dfs.append(
+            pd.read_pickle("results/benchmark_%s_%s.pickle" % (package, ext))
+        )
 
     df = pd.concat(dfs, ignore_index=True)
 
@@ -19,17 +21,16 @@ for package in ['pytorch', 'tf', 'np', 'metadata']:
     fig = plt.figure()
 
     g = sns.catplot(
-        x="time", 
-        y="lib", 
+        x="time",
+        y="lib",
         kind='bar',
-        hue='ext', 
+        hue='ext',
         order=ordered_libs,
         data=df,
-        height=6.6, 
+        height=6.6,
         aspect=1,
         legend=False
     )
     g.despine(left=True)
     plt.legend(loc='upper right')
     g.savefig("results/benchmark_%s.png" % package)
-

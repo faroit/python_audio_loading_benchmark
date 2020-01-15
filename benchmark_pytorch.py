@@ -65,7 +65,6 @@ if __name__ == "__main__":
     libs = [
         'ar_gstreamer',
         'ar_ffmpeg',
-        'ar_mad',
         'aubio',
         'pydub',
         'soundfile',

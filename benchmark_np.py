@@ -43,7 +43,7 @@ class AudioFolder(object):
 
 
 if __name__ == "__main__":
-    
+
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--ext', type=str, default="wav")
     args = parser.parse_args()
@@ -62,11 +62,10 @@ if __name__ == "__main__":
     libs = [
         'ar_gstreamer',
         'ar_ffmpeg',
-        'ar_mad',
         'aubio',
         'pydub',
-        'soundfile', 
-        'librosa', 
+        'soundfile',
+        'librosa',
         'scipy',
         'scipy_mmap'
     ]
@@ -78,12 +77,11 @@ if __name__ == "__main__":
                 try:
                     duration = int(audio_dir)
                     dataset = AudioFolder(
-                            os.path.join(root, audio_dir), 
-                            lib='load_' + lib,
-                            extension=args.ext
+                        os.path.join(root, audio_dir),
+                        lib='load_' + lib,
+                        extension=args.ext
                     )
-                    
-                    
+
                     start = time.time()
 
                     for fp in dataset.audio_files:

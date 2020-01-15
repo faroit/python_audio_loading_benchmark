@@ -72,7 +72,13 @@ Build the docker container using
 docker build -t audio_benchmark .
 ```
 It installs all the package requirements for all audio libraries.
-Afterwards, mount the data directory into the docker container.
+Afterwards, mount the data directory into the docker container and run `run.sh` inside the
+container, e.g.:
+
+```bash
+docker run -v /home/user/repos/python_audio_loading_benchmark/:/app \
+    -it audio_benchmark:latest /bin/bash run.sh
+```
 
 ### Setting up in a virtual environment
 

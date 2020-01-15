@@ -61,7 +61,6 @@ if __name__ == "__main__":
         'soundfile',
         'sox',
         'audioread',
-        # 'pydub',  # too slow
     ]
 
     for lib in libs:

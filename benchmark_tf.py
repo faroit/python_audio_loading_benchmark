@@ -50,7 +50,6 @@ if __name__ == "__main__":
     libs = [
         'ar_gstreamer',
         'ar_ffmpeg',
-        'ar_mad',
         'aubio',
         'pydub',
         'soundfile',
@@ -58,7 +57,7 @@ if __name__ == "__main__":
         'scipy',
         'scipy_mmap',
         'tf_decode_wav',
-        'tfio_fromaudio'
+        'tfio_fromaudio',
     ]
 
     for lib in libs:
@@ -82,6 +81,11 @@ if __name__ == "__main__":
                         lambda x: loaders.load_tfio_fromaudio(x),
                         num_parallel_calls=1
                     )
+                elif lib in ["tfio_fromffmpeg"]:
+                    dataset = dataset.map(
+                        lambda x: loaders.load_tfio_fromffmpeg(x),
+                        num_parallel_calls=1
+                    )
                 else:
                     loader_function = getattr(loaders, 'load_' + lib)
                     dataset = dataset.map(
@@ -90,11 +94,11 @@ if __name__ == "__main__":
                             [filename],
                             [tf.float32]
                         ),
-                        num_parallel_calls=1
+                        num_parallel_calls=4
                     )
 
                 dataset = dataset.apply(tf.data.experimental.ignore_errors())
-                dataset = dataset.batch(1)
+                # dataset = dataset.batch(4)
                 start = time.time()
 
                 for audio in dataset:

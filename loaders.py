@@ -1,6 +1,6 @@
 from scipy.io import wavfile
 import audioread.rawread
-# import audioread.gstdec
+import audioread.gstdec
 import audioread.maddec
 import audioread.ffdec
 import matplotlib.pyplot as plt
@@ -21,11 +21,19 @@ https://github.com/aubio/aubio/blob/master/python/demos/demo_reading_speed.py
 
 
 @tf.function
+def load_tfio_fromffmpeg(fp):
+    # not supported yet
+    audio = tfio.IOTensor.graph(tf.int16).from_ffmpeg(fp)
+    return tf.cast(audio.to_tensor(), tf.float32) / 32767.0
+
+
+@tf.function
 def load_tfio_fromaudio(fp):
     audio = tfio.IOTensor.graph(tf.int16).from_audio(fp)
     return tf.cast(audio.to_tensor(), tf.float32) / 32767.0
 
 
+@tf.function
 def load_tf_decode_wav(fp, ext="wav", rate=44100):
     audio, rate = tf.audio.decode_wav(tf.io.read_file(fp))
     return tf.cast(audio, tf.float32)
@@ -104,8 +112,6 @@ def load_pydub(fp):
 
 
 def load_librosa(fp):
-    """Librosa audio loading is using 
-    """
     # loading with `sr=None` is disabling the internal resampling
     sig, rate = librosa.load(fp, sr=None)
     return sig
