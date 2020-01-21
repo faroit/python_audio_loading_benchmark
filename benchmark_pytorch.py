@@ -28,7 +28,6 @@ class AudioFolder(torch.utils.data.Dataset):
     def __init__(
         self,
         root,
-        download=True,
         extension='wav',
         lib="librosa",
     ):
@@ -46,7 +45,7 @@ class AudioFolder(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
-    
+
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--ext', type=str, default="wav")
     args = parser.parse_args()
@@ -74,10 +73,19 @@ if __name__ == "__main__":
     ]
 
     if args.ext != "mp4":
-        libs.append('torchaudio')
+        libs.append('torchaudio_sox')
+        libs.append('torchaudio_soundfile')
 
     for lib in libs:
         print("Testing: %s" % lib)
+        if "torchaudio" in lib:
+            backend = lib.split("torchaudio_")[-1]
+            import torchaudio
+            torchaudio.set_audio_backend(backend)
+            call_fun = "load_torchaudio"
+        else:
+            call_fun = 'load_' + lib
+
         for root, dirs, fnames in sorted(os.walk('AUDIO')):
             for audio_dir in dirs:
                 try:
@@ -85,7 +93,7 @@ if __name__ == "__main__":
                     data = torch.utils.data.DataLoader(
                         AudioFolder(
                             os.path.join(root, audio_dir),
-                            lib='load_' + lib,
+                            lib=call_fun,
                             extension=args.ext
                         ),
                         batch_size=1,
@@ -105,6 +113,7 @@ if __name__ == "__main__":
                         time=float(end-start) / len(data),
                     )
                 except:
+                    "Error but continue"
                     continue
 
     store.df.to_pickle("results/benchmark_%s_%s.pickle" % ("pytorch", args.ext))
