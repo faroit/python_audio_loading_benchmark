@@ -4,7 +4,7 @@ The aim of his repository is to evaluate the loading performance of various audi
 
 This is relevant for machine learning models that today often process raw (time domain) audio and assembling a batch on the fly. It is therefore important to load the audio as fast as possible. At the same time a library should ideally support a variety of uncompressed and compressed audio formats and also is capable of loading only chunks of audio (seeking). The latter is especially important for models that cannot easily work with samples of variable length (convnets).
 
-## Tested Libraries 
+## Tested Libraries
 
 | Library                 | Version | Short-Name/Code       | Out Type          | Supported codecs  | Excerpts/Seeking |
 |-------------------------|---------|-----------------------|-------------------|-------------------| -----------------|
@@ -16,16 +16,15 @@ This is relevant for machine learning models that today often process raw (time 
 | [audioread](https://github.com/beetbox/audioread) ([gstreamer](https://gstreamer.freedesktop.org/)) | 2.1.8 | [`ar_gstreamer`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L67) | Numpy Array | all of FFMPEG | ❌ |
 | [audioread](https://github.com/beetbox/audioread) ([FFMPEG](https://www.ffmpeg.org/)) | 2.1.8 | [`ar_ffmpeg`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L87) | Numpy Array | all of FFMPEG | ❌ |
 | [librosa](https://librosa.github.io/)  | 0.7.2 | [`librosa`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L104) | Numpy Array | relies on audioread |  ✅ |
-| [tensorflow `tf.io.audio.decode_wav`](https://www.tensorflow.org/api_docs/python/tf/contrib/ffmpeg/decode_audio) | 2.1 | [`tf_decode_wav`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L22) | Tensorflow Tensor | PCM (only 16 bit) |  ❌ |
+| [tensorflow `tf.io.audio.decode_wav`](https://www.tensorflow.org/api_docs/python/tf/contrib/ffmpeg/decode_audio) | 2.1.0 | [`tf_decode_wav`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L22) | Tensorflow Tensor | PCM (only 16 bit) |  ❌ |
 | [tensorflow-io `from_audio`](https://www.tensorflow.org/io/api_docs/python/tfio/v0/IOTensor#from_audio) | 0.11.0 | [`tfio_fromaudio`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L22) | Tensorflow Tensor | PCM, Ogg, Flac |  ✅ |
-
-| [torchaudio](https://github.com/pytorch/audio) | 0.3.2 | [`torchaudio`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L45) | PyTorch Tensor | all codecs supported by Sox |  ✅ |
-
+| [torchaudio](https://github.com/pytorch/audio) (sox) | 0.4.0 | [`torchaudio`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L45) | PyTorch Tensor | all codecs supported by Sox |  ✅ |
+| [torchaudio](https://github.com/pytorch/audio) (soundfile) | 0.4.0| [`torchaudio`](https://github.com/faroit/python_audio_loading_benchmark/blob/master/loaders.py#L45) | PyTorch Tensor | all codecs supported by Sox |  ✅ |
 ### Not included
 
 * __[audioread (coreaudio)](https://github.com/beetbox/audioread/blob/master/audioread/macca.py)__: only available on macOS.
 * __[madmom](https://github.com/CPJKU/madmom)__: same ffmpeg interface as `ar_ffmpeg`.
-* __[pymad](https://github.com/jaqx0r/pymad)__: only support for MP3
+* __[pymad](https://github.com/jaqx0r/pymad)__: only support for MP3, also very slow.
 * __[python builtin `wave`](https://docs.python.org/3.7/library/wave.html)__: TODO (open for PR)
 
 ## Results
