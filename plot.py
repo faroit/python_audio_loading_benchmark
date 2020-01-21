@@ -31,6 +31,7 @@ for package in ['pytorch', 'tf', 'np', 'metadata']:
         aspect=1,
         legend=False
     )
+    g.set(xscale="log")
     g.despine(left=True)
     plt.legend(loc='upper right')
     g.savefig("results/benchmark_%s.png" % package)
