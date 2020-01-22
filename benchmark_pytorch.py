@@ -38,7 +38,7 @@ class AudioFolder(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         audio = self.loader_function(self.audio_files[index])
-        return torch.FloatTensor(audio).view(1, 1, -1)
+        return torch.from_numpy(audio).view(1, 1, -1)
 
     def __len__(self):
         return len(self.audio_files)
