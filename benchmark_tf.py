@@ -64,53 +64,56 @@ if __name__ == "__main__":
         print("Testing: %s" % lib)
         for root, dirs, fnames in sorted(os.walk('AUDIO')):
             for audio_dir in dirs:
-                duration = int(audio_dir)
-                audio_files = get_files(
-                    dir=os.path.join(root, audio_dir),
-                    extension=args.ext
-                )
-
-                dataset = tf.data.Dataset.from_tensor_slices(audio_files)
-                if lib in ["tf_decode_wav"]:
-                    dataset = dataset.map(
-                        lambda x: loaders.load_tf_decode_wav(x),
-                        num_parallel_calls=1
-                    )
-                elif lib in ["tfio_fromaudio"]:
-                    dataset = dataset.map(
-                        lambda x: loaders.load_tfio_fromaudio(x),
-                        num_parallel_calls=1
-                    )
-                elif lib in ["tfio_fromffmpeg"]:
-                    dataset = dataset.map(
-                        lambda x: loaders.load_tfio_fromffmpeg(x),
-                        num_parallel_calls=1
-                    )
-                else:
-                    loader_function = getattr(loaders, 'load_' + lib)
-                    dataset = dataset.map(
-                        lambda filename: tf.py_function(
-                            _make_py_loader_function(loader_function),
-                            [filename],
-                            [tf.float32]
-                        ),
-                        num_parallel_calls=4
+                try:
+                    duration = int(audio_dir)
+                    audio_files = get_files(
+                        dir=os.path.join(root, audio_dir),
+                        extension=args.ext
                     )
 
-                dataset = dataset.apply(tf.data.experimental.ignore_errors())
-                # dataset = dataset.batch(4)
-                start = time.time()
+                    dataset = tf.data.Dataset.from_tensor_slices(audio_files)
+                    if lib in ["tf_decode_wav"]:
+                        dataset = dataset.map(
+                            lambda x: loaders.load_tf_decode_wav(x),
+                            num_parallel_calls=1
+                        )
+                    elif lib in ["tfio_fromaudio"]:
+                        dataset = dataset.map(
+                            lambda x: loaders.load_tfio_fromaudio(x),
+                            num_parallel_calls=1
+                        )
+                    elif lib in ["tfio_fromffmpeg"]:
+                        dataset = dataset.map(
+                            lambda x: loaders.load_tfio_fromffmpeg(x),
+                            num_parallel_calls=1
+                        )
+                    else:
+                        loader_function = getattr(loaders, 'load_' + lib)
+                        dataset = dataset.map(
+                            lambda filename: tf.py_function(
+                                _make_py_loader_function(loader_function),
+                                [filename],
+                                [tf.float32]
+                            ),
+                            num_parallel_calls=4
+                        )
 
-                for audio in dataset:
-                    value = tf.reduce_max(audio)
+                    # dataset = dataset.apply(tf.data.experimental.ignore_errors())
+                    # dataset = dataset.batch(4)
+                    start = time.time()
 
-                end = time.time()
+                    for audio in dataset:
+                        value = tf.reduce_max(audio)
 
-                store.append(
-                    ext=args.ext,
-                    lib=lib,
-                    duration=duration,
-                    time=float(end-start) / len(audio_files),
-                )
+                    end = time.time()
+
+                    store.append(
+                        ext=args.ext,
+                        lib=lib,
+                        duration=duration,
+                        time=float(end-start) / len(audio_files),
+                    )
+                except:
+                    continue
 
     store.df.to_pickle("results/benchmark_%s_%s.pickle" % ("tf", args.ext))
