@@ -1,7 +1,7 @@
 scipy==1.4.1
 tensorflow==2.1.0
 audioread==2.1.8
-librosa==0.7.2
+librosa==0.8.0
 SoundFile==0.10.2
 torch==1.5.1
 pydub==0.23.1
