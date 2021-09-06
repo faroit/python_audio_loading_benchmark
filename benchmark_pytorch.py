@@ -50,6 +50,7 @@ if __name__ == "__main__":
     parser.add_argument('--ext', type=str, default="wav")
     args = parser.parse_args()
 
+    repeat = 3
     columns = [
         'ext',
         'lib',
@@ -103,15 +104,16 @@ if __name__ == "__main__":
                     )
                     start = time.time()
 
-                    for X in data:
-                        X.max()
+                    for i in range(repeat):
+                        for X in data:
+                            X.max()
 
                     end = time.time()
                     store.append(
                         ext=args.ext,
                         lib=lib,
                         duration=duration,
-                        time=float(end-start) / len(data),
+                        time=float(end-start) / (len(data) * repeat),
                     )
                 except:
                     "Error but continue"

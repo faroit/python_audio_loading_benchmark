@@ -37,7 +37,7 @@ if __name__ == "__main__":
     )
     parser.add_argument('--ext', type=str, default="wav")
     args = parser.parse_args()
-
+    repeat = 3
     columns = [
         'ext',
         'lib',
@@ -103,10 +103,11 @@ if __name__ == "__main__":
 
                 start = time.time()
 
-                for audio in dataset:
-                    value = tf.reduce_max(audio)
-                    if value > 0.0:
-                        append = True
+                for i in range(repeat):
+                    for audio in dataset:
+                        value = tf.reduce_max(audio)
+                        if value > 0.0:
+                            append = True
 
                 end = time.time()
                 
@@ -115,7 +116,7 @@ if __name__ == "__main__":
                         ext=args.ext,
                         lib=lib,
                         duration=duration,
-                        time=float(end-start) / len(audio_files),
+                        time=float(end-start) / (len(audio_files) * repeat),
                     )
 
     store.df.to_pickle("results/benchmark_%s_%s.pickle" % ("tf", args.ext))
