@@ -28,9 +28,12 @@ def load_tfio_fromffmpeg(fp):
 
 
 @tf.function
-def load_tfio_fromaudio(fp):
-    audio = tfio.IOTensor.graph(tf.int16).from_audio(fp)
-    return tf.cast(audio.to_tensor(), tf.float32) / 32767.0
+def load_tfio_fromaudio(fp, ext="wav"):
+    if ext in ["wav", "flac", "mp4"]:
+        audio = tfio.IOTensor.graph(tf.float16).from_audio(fp)
+        return tf.cast(audio.to_tensor(), tf.float16)
+    else:
+        return tfio.IOTensor.graph(tf.float32).from_audio(fp).to_tensor()
 
 
 @tf.function

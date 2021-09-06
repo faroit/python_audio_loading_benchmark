@@ -48,6 +48,7 @@ if __name__ == "__main__":
     store = utils.DF_writer(columns)
 
     libs = [
+        'tfio_fromaudio',
         'stempeg',
         'soxbindings',
         'ar_ffmpeg',
@@ -58,7 +59,6 @@ if __name__ == "__main__":
         'scipy',
         'scipy_mmap',
         'tf_decode_wav',
-        'tfio_fromaudio'
     ]
 
     for lib in libs:
@@ -80,7 +80,7 @@ if __name__ == "__main__":
                     )
                 elif lib in ["tfio_fromaudio"]:
                     dataset = dataset.map(
-                        lambda x: loaders.load_tfio_fromaudio(x),
+                        lambda x: loaders.load_tfio_fromaudio(x, args.ext),
                         num_parallel_calls=1
                     )
                 elif lib in ["tfio_fromffmpeg"]:
@@ -106,7 +106,7 @@ if __name__ == "__main__":
                 for i in range(repeat):
                     for audio in dataset:
                         value = tf.reduce_max(audio)
-                        if value > 0.0:
+                        if value:
                             append = True
 
                 end = time.time()
