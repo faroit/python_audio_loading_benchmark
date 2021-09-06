@@ -10,7 +10,8 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_io as tfio
 import librosa
-import soxbindings as sox
+import soxbindings
+import sox
 import stempeg
 
 
@@ -102,7 +103,7 @@ def load_ar_ffmpeg(fp):
 
 
 def load_soxbindings(fp):
-    tfm = sox.Transformer()
+    tfm = soxbindings.Transformer()
     array_out = tfm.build_array(input_filepath=fp)
     return array_out
 
@@ -190,12 +191,19 @@ def info_pydub(fp):
 
 def info_torchaudio(fp):
     info = {}
-    f, _ = torchaudio.info(fp)
-    info['duration'] = f.length / f.rate
-    f, _ = torchaudio.info(fp)
-    info['samples'] = f.length
-    f, _ = torchaudio.info(fp)
-    info['channels'] = f.channels
-    f, _ = torchaudio.info(fp)
-    info['sampling_rate'] = f.rate
+    si = torchaudio.info(str(fp))
+    info["sampling_rate"] = si.sample_rate
+    info["samples"] = si.num_frames
+    info["channels"] = si.num_channels
+    info["duration"] = info["samples"] / info["sampling_rate"]
+    return info
+
+
+def info_stempeg(fp):
+    info = {}
+    si = stempeg.Info(fp)
+    info["sampling_rate"] = si.sample_rate(0)
+    info["samples"] = si.samples(0)
+    info["channels"] = si.channels(0)
+    info["duration"] = si.duration(0)
     return info

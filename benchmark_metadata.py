@@ -56,6 +56,7 @@ if __name__ == "__main__":
     # audio formats to be bench
     # libraries to be benchmarked
     libs = [
+        'stempeg',
         'torchaudio',
         'aubio',
         'soundfile',
@@ -68,30 +69,31 @@ if __name__ == "__main__":
         for root, dirs, fnames in sorted(os.walk('AUDIO')):
             for audio_dir in dirs:
                 # torchaudio segfaults for MP4
-                if lib == 'torchaudio' and args.ext == 'mp4':
+                if lib in ['torchaudio', 'sox'] and args.ext == 'mp4':
                     continue
-                try:
-                    duration = int(audio_dir)
-                    dataset = AudioFolder(
-                            os.path.join(root, audio_dir),
-                            lib='info_' + lib,
-                            extension=args.ext
-                    )
+                if lib == 'soundfile' and args.ext in ['mp3', 'mp4']:
+                    continue
 
-                    start = time.time()
+                duration = int(audio_dir)
+                dataset = AudioFolder(
+                        os.path.join(root, audio_dir),
+                        lib='info_' + lib,
+                        extension=args.ext
+                )
 
+                start = time.time()
+
+                for i in range(3):
                     for fp in dataset.audio_files:
                         info = dataset.loader_function(fp)
                         info['duration']
 
-                    end = time.time()
-                    store.append(
-                        ext=args.ext,
-                        lib=lib,
-                        duration=duration,
-                        time=float(end-start) / len(dataset),
-                    )
-                except:
-                    continue
+                end = time.time()
+                store.append(
+                    ext=args.ext,
+                    lib=lib,
+                    duration=duration,
+                    time=float(end-start) / (len(dataset) * 3),
+                )
 
     store.df.to_pickle('results/benchmark_metadata_{}.pickle'.format(args.ext))

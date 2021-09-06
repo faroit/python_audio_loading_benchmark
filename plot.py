@@ -3,7 +3,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 
-for package in ['np', 'pytorch', 'tf']:
+for package in ['np', 'pytorch', 'tf', 'metadata']:
     dfs = []
     for ext in ["wav", "mp3", "mp4", "ogg", "flac"]:
         try:
@@ -34,6 +34,7 @@ for package in ['np', 'pytorch', 'tf']:
         aspect=1,
         legend=False
     )
+    g.set(xscale="log")
     g.despine(left=True)
     plt.legend(loc='upper right')
     g.savefig("results/benchmark_%s.png" % package)
