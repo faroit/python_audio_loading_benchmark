@@ -38,7 +38,7 @@ class AudioFolder(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         audio = self.loader_function(self.audio_files[index])
-        return torch.from_numpy(audio).view(1, 1, -1)
+        return torch.as_tensor(audio).view(1, 1, -1)
 
     def __len__(self):
         return len(self.audio_files)
@@ -62,7 +62,8 @@ if __name__ == "__main__":
     # audio formats to be bench
     # libraries to be benchmarked
     libs = [
-        'ar_gstreamer',
+        'stempeg',
+        'soxbindings',
         'ar_ffmpeg',
         'aubio',
         'pydub',
@@ -73,13 +74,13 @@ if __name__ == "__main__":
     ]
 
     if args.ext != "mp4":
-        libs.append('torchaudio_sox')
-        libs.append('torchaudio_soundfile')
+        libs.append('torchaudio-sox_io')
+        libs.append('torchaudio-soundfile')
 
     for lib in libs:
         print("Testing: %s" % lib)
         if "torchaudio" in lib:
-            backend = lib.split("torchaudio_")[-1]
+            backend = lib.split("torchaudio-")[-1]
             import torchaudio
             torchaudio.set_audio_backend(backend)
             call_fun = "load_torchaudio"

@@ -1,6 +1,5 @@
 from scipy.io import wavfile
 import audioread.rawread
-import audioread.gstdec
 import audioread.ffdec
 import matplotlib.pyplot as plt
 import soundfile as sf
@@ -11,7 +10,9 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_io as tfio
 import librosa
-import sox
+import soxbindings as sox
+import stempeg
+
 
 """
 Some of the code taken from: 
@@ -56,6 +57,20 @@ def load_torchaudio(fp):
     return sig
 
 
+def load_stempeg(fp):
+    sig = stempeg.read._read_ffmpeg(
+        fp,
+        sample_rate=44100,
+        channels=1,
+        start=None,
+        duration=None,
+        dtype=np.float32,
+        ffmpeg_format='f32le',
+        stem_idx=0
+    )
+    return sig
+
+
 def load_soundfile(fp):
     sig, rate = sf.read(fp)
     return sig
@@ -73,16 +88,6 @@ def load_scipy_mmap(fp):
     return sig
 
 
-def load_ar_gstreamer(fp):
-    with audioread.gstdec.GstAudioFile(fp) as f:
-        total_frames = 0
-        for buf in f:
-            sig = _convert_buffer_to_float(buf)
-            sig = sig.reshape(f.channels, -1)
-            total_frames += sig.shape[1]
-        return sig
-
-
 def load_ar_ffmpeg(fp):
     with audioread.ffdec.FFmpegAudioFile(fp) as f:
         total_frames = 0
@@ -91,6 +96,12 @@ def load_ar_ffmpeg(fp):
             sig = sig.reshape(f.channels, -1)
             total_frames += sig.shape[1]
         return sig
+
+
+def load_soxbindings(fp):
+    tfm = sox.Transformer()
+    array_out = tfm.build_array(input_filepath=fp)
+    return array_out
 
 
 def load_pydub(fp):

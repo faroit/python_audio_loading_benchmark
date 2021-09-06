@@ -60,7 +60,8 @@ if __name__ == "__main__":
     # audio formats to be bench
     # libraries to be benchmarked
     libs = [
-        'ar_gstreamer',
+        'stempeg',
+        'soxbindings',
         'ar_ffmpeg',
         'aubio',
         'pydub',
