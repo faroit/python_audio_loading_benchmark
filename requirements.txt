@@ -10,6 +10,7 @@ soxbindings
 torchaudio==0.9.0
 aubio==0.4.9
 tensorflow_io==0.20.0
+stempeg==0.2.3
 seaborn
 pandas
 ipython
