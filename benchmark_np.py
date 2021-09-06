@@ -1,13 +1,11 @@
-import matplotlib
-matplotlib.use('Agg')
 import os
 import os.path
-import random
-import time
+import timeit
 import argparse
 import utils
-import loaders
 import numpy as np
+import functools
+import loaders
 
 
 def get_files(dir, extension):
@@ -26,24 +24,30 @@ class AudioFolder(object):
     def __init__(
         self,
         root,
-        download=True,
-        extension='wav',
-        lib="librosa",
+        extension='wav'
     ):
         self.root = os.path.expanduser(root)
         self.data = []
         self.audio_files = get_files(dir=self.root, extension=extension)
-        self.loader_function = getattr(loaders, lib)
 
     def __getitem__(self, index):
-        return self.loader_function(self.audio_files[index])
+        return self.audio_files[index]
 
     def __len__(self):
         return len(self.audio_files)
 
 
+def test_np_loading(fp, lib):
+    load_function = getattr(loaders, 'load_' + lib)
+    audio = load_function(fp)
+    if np.max(audio) > 0:
+        return True
+    else:
+        return False
+
+
 if __name__ == "__main__":
-    
+
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--ext', type=str, default="wav")
     args = parser.parse_args()
@@ -60,14 +64,14 @@ if __name__ == "__main__":
     # audio formats to be bench
     # libraries to be benchmarked
     libs = [
-        'ar_gstreamer',
+        'scipy',
+        'stempeg',
+        'soxbindings',
         'ar_ffmpeg',
-        'ar_mad',
         'aubio',
         'pydub',
-        'soundfile', 
-        'librosa', 
-        'scipy',
+        'soundfile',
+        'librosa',
         'scipy_mmap'
     ]
 
@@ -75,29 +79,25 @@ if __name__ == "__main__":
         print("Testing: %s" % lib)
         for root, dirs, fnames in sorted(os.walk('AUDIO')):
             for audio_dir in dirs:
-                try:
-                    duration = int(audio_dir)
-                    dataset = AudioFolder(
-                            os.path.join(root, audio_dir), 
-                            lib='load_' + lib,
-                            extension=args.ext
-                    )
-                    
-                    
-                    start = time.time()
+                duration = int(audio_dir)
+                dataset = AudioFolder(
+                    os.path.join(root, audio_dir),
+                    extension=args.ext
+                )
 
-                    for fp in dataset.audio_files:
-                        audio = dataset.loader_function(fp)
-                        np.max(audio)
+                # for fp in dataset.audio_files:
+                for fp in dataset.audio_files:
+                    time = min(timeit.repeat(
+                        functools.partial(test_np_loading, fp, lib),
+                        number=3,
+                        repeat=3
+                    ))
 
-                    end = time.time()
-                    store.append(
-                        ext=args.ext,
-                        lib=lib,
-                        duration=duration,
-                        time=float(end-start) / len(dataset),
-                    )
-                except:
-                    continue
+                store.append(
+                    ext=args.ext,
+                    lib=lib,
+                    duration=duration,
+                    time=time,
+                )
 
     store.df.to_pickle("results/benchmark_%s_%s.pickle" % ("np", args.ext))

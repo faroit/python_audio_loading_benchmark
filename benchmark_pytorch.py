@@ -28,7 +28,6 @@ class AudioFolder(torch.utils.data.Dataset):
     def __init__(
         self,
         root,
-        download=True,
         extension='wav',
         lib="librosa",
     ):
@@ -39,18 +38,19 @@ class AudioFolder(torch.utils.data.Dataset):
 
     def __getitem__(self, index):
         audio = self.loader_function(self.audio_files[index])
-        return torch.FloatTensor(audio).view(1, 1, -1)
+        return torch.as_tensor(audio).view(1, 1, -1)
 
     def __len__(self):
         return len(self.audio_files)
 
 
 if __name__ == "__main__":
-    
+
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--ext', type=str, default="wav")
     args = parser.parse_args()
 
+    repeat = 3
     columns = [
         'ext',
         'lib',
@@ -63,30 +63,39 @@ if __name__ == "__main__":
     # audio formats to be bench
     # libraries to be benchmarked
     libs = [
-        'ar_gstreamer',
+        'stempeg',
+        'soxbindings',
         'ar_ffmpeg',
-        'ar_mad',
         'aubio',
         'pydub',
-        'soundfile', 
-        'librosa', 
+        'soundfile',
+        'librosa',
         'scipy',
         'scipy_mmap',
     ]
 
     if args.ext != "mp4":
-        libs.append('torchaudio')
+        libs.append('torchaudio-sox_io')
+        libs.append('torchaudio-soundfile')
 
     for lib in libs:
         print("Testing: %s" % lib)
+        if "torchaudio" in lib:
+            backend = lib.split("torchaudio-")[-1]
+            import torchaudio
+            torchaudio.set_audio_backend(backend)
+            call_fun = "load_torchaudio"
+        else:
+            call_fun = 'load_' + lib
+
         for root, dirs, fnames in sorted(os.walk('AUDIO')):
             for audio_dir in dirs:
                 try:
                     duration = int(audio_dir)
                     data = torch.utils.data.DataLoader(
                         AudioFolder(
-                            os.path.join(root, audio_dir), 
-                            lib='load_' + lib,
+                            os.path.join(root, audio_dir),
+                            lib=call_fun,
                             extension=args.ext
                         ),
                         batch_size=1,
@@ -95,18 +104,19 @@ if __name__ == "__main__":
                     )
                     start = time.time()
 
-                    for X in data:
-                        X.max()
+                    for i in range(repeat):
+                        for X in data:
+                            X.max()
 
                     end = time.time()
                     store.append(
                         ext=args.ext,
                         lib=lib,
                         duration=duration,
-                        time=float(end-start) / len(data),
+                        time=float(end-start) / (len(data) * repeat),
                     )
                 except:
+                    "Error but continue"
                     continue
-
 
     store.df.to_pickle("results/benchmark_%s_%s.pickle" % ("pytorch", args.ext))

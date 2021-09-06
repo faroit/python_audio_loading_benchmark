@@ -1,7 +1,5 @@
 from scipy.io import wavfile
 import audioread.rawread
-import audioread.gstdec
-import audioread.maddec
 import audioread.ffdec
 import matplotlib.pyplot as plt
 import soundfile as sf
@@ -10,8 +8,11 @@ from pydub import AudioSegment
 import torchaudio
 import numpy as np
 import tensorflow as tf
+import tensorflow_io as tfio
 import librosa
-import sox
+import soxbindings as sox
+import stempeg
+
 
 """
 Some of the code taken from: 
@@ -19,15 +20,26 @@ https://github.com/aubio/aubio/blob/master/python/demos/demo_reading_speed.py
 """
 
 
-def load_tf_decode(fp, ext="wav", rate=44100):
-    audio_binary = tf.read_file(fp)
-    audio_decoded = tf.contrib.ffmpeg.decode_audio(
-        audio_binary, 
-        file_format=ext, 
-        samples_per_second=rate, 
-        channel_count=1
-    )
-    return tf.cast(audio_decoded, tf.float32)
+@tf.function
+def load_tfio_fromffmpeg(fp):
+    # not supported yet
+    audio = tfio.IOTensor.graph(tf.int16).from_ffmpeg(fp)
+    return tf.cast(audio.to_tensor(), tf.float32) / 32767.0
+
+
+@tf.function
+def load_tfio_fromaudio(fp, ext="wav"):
+    if ext in ["wav", "flac", "mp4"]:
+        audio = tfio.IOTensor.graph(tf.float16).from_audio(fp)
+        return tf.cast(audio.to_tensor(), tf.float16)
+    else:
+        return tfio.IOTensor.graph(tf.float32).from_audio(fp).to_tensor()
+
+
+@tf.function
+def load_tf_decode_wav(fp, ext="wav", rate=44100):
+    audio, rate = tf.audio.decode_wav(tf.io.read_file(fp))
+    return tf.cast(audio, tf.float32)
 
 
 def load_aubio(fp):
@@ -48,6 +60,20 @@ def load_torchaudio(fp):
     return sig
 
 
+def load_stempeg(fp):
+    sig = stempeg.read._read_ffmpeg(
+        fp,
+        sample_rate=44100,
+        channels=1,
+        start=None,
+        duration=None,
+        dtype=np.float32,
+        ffmpeg_format='f32le',
+        stem_idx=0
+    )
+    return sig
+
+
 def load_soundfile(fp):
     sig, rate = sf.read(fp)
     return sig
@@ -65,26 +91,6 @@ def load_scipy_mmap(fp):
     return sig
 
 
-def load_ar_gstreamer(fp):
-    with audioread.gstdec.GstAudioFile(fp) as f:
-        total_frames = 0
-        for buf in f:
-            sig = _convert_buffer_to_float(buf)
-            sig = sig.reshape(f.channels, -1)
-            total_frames += sig.shape[1]
-        return sig
-
-
-def load_ar_mad(fp):
-    with audioread.maddec.MadAudioFile(fp) as f:
-        total_frames = 0
-        for buf in f:
-            sig = _convert_buffer_to_float(buf)
-            sig = sig.reshape(f.channels, -1)
-            total_frames += sig.shape[1]
-        return sig
-
-
 def load_ar_ffmpeg(fp):
     with audioread.ffdec.FFmpegAudioFile(fp) as f:
         total_frames = 0
@@ -95,6 +101,12 @@ def load_ar_ffmpeg(fp):
         return sig
 
 
+def load_soxbindings(fp):
+    tfm = sox.Transformer()
+    array_out = tfm.build_array(input_filepath=fp)
+    return array_out
+
+
 def load_pydub(fp):
     song = AudioSegment.from_file(fp)
     sig = np.asarray(song.get_array_of_samples(), dtype='float32')
@@ -103,8 +115,6 @@ def load_pydub(fp):
 
 
 def load_librosa(fp):
-    """Librosa audio loading is using 
-    """
     # loading with `sr=None` is disabling the internal resampling
     sig, rate = librosa.load(fp, sr=None)
     return sig
