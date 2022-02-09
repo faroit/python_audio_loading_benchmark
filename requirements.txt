@@ -1,5 +1,5 @@
 scipy==1.7.1
-tensorflow==2.6.0
+tensorflow==2.6.3
 audioread==2.1.9
 librosa==0.8.1
 SoundFile==0.10.3.post1
