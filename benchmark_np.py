@@ -72,7 +72,8 @@ if __name__ == "__main__":
         'pydub',
         'soundfile',
         'librosa',
-        'scipy_mmap'
+        'scipy_mmap',
+        'pedalboard',
     ]
 
     for lib in libs:

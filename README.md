@@ -21,6 +21,7 @@ This is relevant for machine learning models that today often process raw (time 
 | [torchaudio](https://github.com/pytorch/audio) (soundfile)                                                                              | 0.9.0   | `torchaudio`     | PyTorch Tensor    | all codecs supported by Soundfile                   | ✅               |
 | [soxbindings](https://github.com/pseeth/soxbindings)                                                                                    | 0.9.0   | `soxbindings`    | Numpy Tensor      | all codecs supported by Soundfile                   | ✅               |
 | [stempeg](https://github.com/faroit/stempeg)                                                                                            | 0.2.3   | `stempeg`        | Numpy Tensor      | all codecs supported by FFMPEG                      | ✅               |
+| [pedalboard.io.AudioFile](https://github.com/spotify/pedalboard)                                                                                            | 0.5.1   | `pedalboard`        | Numpy Array      | WAV, AIFF, MP3, OGG, FLAC        | ✅               |
 
 ### Not included
 

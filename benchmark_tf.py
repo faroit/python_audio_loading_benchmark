@@ -59,6 +59,7 @@ if __name__ == "__main__":
         'scipy',
         'scipy_mmap',
         'tf_decode_wav',
+        'pedalboard',
     ]
 
     for lib in libs:
