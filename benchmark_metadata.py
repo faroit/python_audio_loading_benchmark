@@ -62,6 +62,7 @@ if __name__ == "__main__":
         'soundfile',
         'sox',
         'audioread',
+        'pedalboard',
     ]
 
     for lib in libs:
