@@ -71,7 +71,7 @@ if __name__ == "__main__":
                 # torchaudio segfaults for MP4
                 if lib in ['torchaudio', 'sox'] and args.ext == 'mp4':
                     continue
-                if lib == 'soundfile' and args.ext in ['mp3', 'mp4']:
+                if lib == 'soundfile' and args.ext in ['mp4']:
                     continue
 
                 duration = int(audio_dir)
