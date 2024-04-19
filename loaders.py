@@ -13,6 +13,7 @@ import librosa
 import soxbindings
 import sox
 import stempeg
+import pedalboard
 
 
 """
@@ -121,6 +122,12 @@ def load_librosa(fp):
     return sig
 
 
+def load_pedalboard(fp):
+    with pedalboard.io.AudioFile(fp) as f:
+        # Pedalboard output is (num_channels, num_samples)
+        return f.read(f.frames)[0]
+
+
 def _convert_buffer_to_float(buf, n_bytes=2, dtype=np.float32):
     # taken from librosa.util.utils
     # Invert the scale of the data
@@ -206,4 +213,14 @@ def info_stempeg(fp):
     info["samples"] = si.samples(0)
     info["channels"] = si.channels(0)
     info["duration"] = si.duration(0)
+    return info
+
+
+def info_pedalboard(fp):
+    info = {}
+    with pedalboard.io.AudioFile(fp) as af:
+        info["sampling_rate"] = af.samplerate
+        info["samples"] = af.frames
+        info["channels"] = af.num_channels
+        info["duration"] = af.duration
     return info
