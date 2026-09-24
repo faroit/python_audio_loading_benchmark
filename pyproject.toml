@@ -47,15 +47,16 @@ extend-exclude = [
     "plot.py",
 ]
 
-[tool.ruff.lint]
-ignore = [
-    # Every probe/adapter (pabench/loaders.py, and later pabench/run.py) must
-    # catch any exception a third-party decoder raises and record it rather
-    # than letting a run abort -- see docs/refactor-design.md, "Error
-    # handling". A deliberately broad `except Exception` is central to that
-    # design, not an oversight this rule should flag.
-    "BLE001",
-]
+[tool.ruff.lint.per-file-ignores]
+# Every probe/adapter in these two modules must catch any exception a
+# third-party decoder raises and record it rather than letting a run abort --
+# see docs/refactor-design.md, "Error handling". A deliberately broad
+# `except Exception` is central to that design, not an oversight this rule
+# should flag. Scoped to exactly the modules whose design requires it, rather
+# than a repo-wide ignore that would also silence the rule where it's not
+# warranted.
+"pabench/loaders.py" = ["BLE001"]
+"pabench/run.py" = ["BLE001"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["pabench"]
