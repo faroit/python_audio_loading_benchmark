@@ -1,6 +1,6 @@
 # pabench — Python audio-loading benchmark
 
-`pabench` measures how fast nine Python audio-decoding libraries can get a WAV,
+`pabench` measures how fast eleven Python audio-decoding libraries can get a WAV,
 FLAC, or MP3 file into a **`float32`, channels-first PyTorch tensor** — the
 representation almost every audio model wants — both for a **full-file decode**
 and for a **seek (excerpt) decode**. It is `uv`-managed, has no untracked
@@ -95,6 +95,9 @@ interpreter is already running (see `pabench/ffmpeg_env.py` and
 | [`audioread`](https://github.com/beetbox/audioread) | yes | no | no native seek; always yields 16-bit PCM, so it cannot pass the exact gate against a float32 or 24-bit source |
 | [`pedalboard`](https://github.com/spotify/pedalboard) | yes | yes | `AudioFile.seek` + `.read` |
 | [`torchcodec`](https://github.com/pytorch/torchcodec) | yes | yes | `get_samples_played_in_range`; imports cleanly even when its native FFmpeg bindings can't load, so `pabench` smoke-tests a real decode before trusting it as available |
+| [`audiolab`](https://github.com/pengzhendong/audiolab) | yes | yes | PyAV-backed; `load_audio(path, dtype=np.float32)`, `offset=`/`duration=` for seek |
+| [`audiosample`](https://github.com/deepdub-ai/audiosample) | **WAV only** | yes | its compressed-format path goes through PyAV and is incompatible with PyAV 18 (`Flags.FAST_SEEK`); slice by seconds (`a[start:stop]`) for seek |
+| [`sphn`](https://github.com/kyutai-labs/sphn) | yes | yes | Rust-backed; `sphn.read(path, start_sec=, duration_sec=)` for seek |
 
 A library is selected by one rule: it must install with `uv` on Python 3.12
 and import cleanly. Every library above is probed on every run, whether or

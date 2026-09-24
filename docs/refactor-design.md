@@ -46,6 +46,9 @@ Selected by one rule: it must install with `uv` on Python 3.12 and import cleanl
 | `audioread` | yes | no | no native seek |
 | `pedalboard` | yes | yes | `AudioFile.seek` + `read` |
 | `torchcodec` | yes | yes | `get_samples_played_in_range` |
+| `audiolab` | yes | yes | PyAV-backed; `load_audio(offset=, duration=)` |
+| `audiosample` | WAV only | yes | its PyAV path is incompatible with PyAV 18 (`Flags.FAST_SEEK`); slice by seconds |
+| `sphn` | yes | yes | Rust-backed; `sphn.read(start_sec=, duration_sec=)` |
 
 Dropped, with reasons recorded in the README so the removals are not silent:
 

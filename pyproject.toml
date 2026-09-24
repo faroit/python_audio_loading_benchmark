@@ -21,6 +21,9 @@ libs = [
     "audioread",
     "pedalboard",
     "torchcodec",
+    "audiolab",
+    "audiosample",
+    "sphn",
 ]
 
 [dependency-groups]

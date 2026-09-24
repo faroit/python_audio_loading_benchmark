@@ -216,7 +216,7 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         choices=sorted(PROBES),
         metavar="NAME",
-        help="restrict to this library (repeatable; default: all nine)",
+        help="restrict to this library (repeatable; default: all eleven)",
     )
     run_parser.add_argument("--bench", choices=_BENCH_CHOICES, default="both")
     run_parser.add_argument("--repeat", type=int, default=DEFAULT_REPEAT)

@@ -1,4 +1,4 @@
-"""Adapters for the nine audio-loading libraries this benchmark measures.
+"""Adapters for the eleven audio-loading libraries this benchmark measures.
 
 Each probe function in `PROBES` imports one library, wires up its full-file decode
 and (where the library supports it) seek decode callables, and smoke-tests them by
@@ -418,6 +418,115 @@ def _probe_torchcodec() -> Loader:
     return _smoke_test(loader)
 
 
+def _probe_audiolab() -> Loader:
+    name = "audiolab"
+    layout: Layout = "channels_first"
+    formats = _WAV_FLAC_MP3
+    notes = None
+    try:
+        import audiolab
+        from audiolab import load_audio
+    except Exception as exc:
+        return _unavailable(name, layout, formats, notes, exc)
+
+    def full(path: Path) -> object:
+        # `load_audio` is the documented one-shot entry point; the package's
+        # `Reader.pull()` is a separate streaming API and is not used here (see
+        # docs/refactor-design.md).
+        data, _ = load_audio(path, dtype=np.float32)
+        return data
+
+    def seek(path: Path, start_seconds: float, duration_seconds: float) -> object:
+        data, _ = load_audio(
+            path, offset=start_seconds, duration=duration_seconds, dtype=np.float32
+        )
+        return data
+
+    loader = Loader(
+        name=name,
+        layout=layout,
+        full=full,
+        seek=seek,
+        version=_package_version(audiolab, "audiolab"),
+        available=True,
+        error=None,
+        formats=formats,
+        notes=notes,
+    )
+    return _smoke_test(loader)
+
+
+def _probe_sphn() -> Loader:
+    name = "sphn"
+    layout: Layout = "channels_first"
+    formats = _WAV_FLAC_MP3
+    notes = (
+        "MP3 decode returns a different frame count than soundfile's reference "
+        "(decoder-delay disagreement); graded by the relaxed MP3 gate"
+    )
+    try:
+        import sphn
+    except Exception as exc:
+        return _unavailable(name, layout, formats, notes, exc)
+
+    def full(path: Path) -> object:
+        data, _ = sphn.read(str(path))
+        return data
+
+    def seek(path: Path, start_seconds: float, duration_seconds: float) -> object:
+        data, _ = sphn.read(str(path), start_sec=start_seconds, duration_sec=duration_seconds)
+        return data
+
+    loader = Loader(
+        name=name,
+        layout=layout,
+        full=full,
+        seek=seek,
+        version=_package_version(sphn, "sphn"),
+        available=True,
+        error=None,
+        formats=formats,
+        notes=notes,
+    )
+    return _smoke_test(loader)
+
+
+def _probe_audiosample() -> Loader:
+    name = "audiosample"
+    layout: Layout = "channels_first"
+    formats = _WAV_ONLY
+    notes = "WAV only here: its PyAV path is incompatible with PyAV 18 (Flags.FAST_SEEK)"
+    try:
+        import audiosample
+        from audiosample import AudioSample
+    except Exception as exc:
+        return _unavailable(name, layout, formats, notes, exc)
+
+    def full(path: Path) -> object:
+        # Kept as numpy (not `.as_tensor()`) so it goes through the same
+        # `to_tensor` conversion as every other loader (see
+        # docs/refactor-design.md).
+        return AudioSample(str(path)).as_numpy()
+
+    def seek(path: Path, start_seconds: float, duration_seconds: float) -> object:
+        sample = AudioSample(str(path))
+        excerpt = sample[start_seconds : start_seconds + duration_seconds]
+        return excerpt.as_numpy()
+
+    loader = Loader(
+        name=name,
+        layout=layout,
+        full=full,
+        seek=seek,
+        version=_package_version(audiosample, "audiosample"),
+        available=True,
+        error=None,
+        formats=formats,
+        notes=notes,
+    )
+    return _smoke_test(loader)
+
+
 PROBES: dict[str, Callable[[], Loader]] = {
     "soundfile": _probe_soundfile,
     "librosa": _probe_librosa,
@@ -427,6 +536,9 @@ PROBES: dict[str, Callable[[], Loader]] = {
     "audioread": _probe_audioread,
     "pedalboard": _probe_pedalboard,
     "torchcodec": _probe_torchcodec,
+    "audiolab": _probe_audiolab,
+    "audiosample": _probe_audiosample,
+    "sphn": _probe_sphn,
 }
 
 
@@ -436,7 +548,7 @@ def available_loaders(names: list[str] | None = None) -> list[Loader]:
     Every requested loader is probed and returned, whether or not it ends up
     `available` -- callers that only want working loaders should filter on
     `.available` themselves. Raises `KeyError` naming any name that isn't one of
-    the nine registered probes.
+    the eleven registered probes.
     """
     selected = list(PROBES.keys()) if names is None else list(names)
     unknown = [n for n in selected if n not in PROBES]
