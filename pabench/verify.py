@@ -138,3 +138,53 @@ def _compare_relaxed(reference: object, candidate: object, sample_rate: int) -> 
         )
 
     return VerifyResult(ok=True, reason=None, gate="relaxed")
+
+
+def compare_seek(
+    reference: np.ndarray,
+    candidate: np.ndarray,
+    fmt: Fmt,
+    sample_rate: int = SAMPLE_RATE,
+    max_shift: int = 1,
+) -> VerifyResult:
+    """Compare a seek result, tolerating up to `max_shift` frames of misalignment.
+
+    Seek APIs that take an offset in *seconds* must convert it to a frame index, and
+    libraries disagree about how: some round, some truncate. An offset whose seconds
+    value is not exactly representable in binary floating point therefore lands one
+    frame apart between two libraries that are both behaving correctly — for example
+    44.48056689342403 s at 44100 Hz is 1961592.9999999998 frames.
+
+    On white noise a one-frame shift decorrelates the signals completely, so a strict
+    comparison reports a maximal difference and the library looks broken. This helper
+    takes the best alignment within `max_shift` frames. The window is deliberately tiny:
+    one frame admits the rounding convention while still rejecting a genuine seek error,
+    which lands orders of magnitude further away.
+
+    Args:
+        reference: Reference excerpt, channels-first.
+        candidate: Candidate excerpt, channels-first.
+        fmt: The corpus format, selecting the gate.
+        sample_rate: Sample rate, for the mp3 duration rule.
+        max_shift: Maximum frame offset to try in either direction.
+
+    Returns:
+        The first passing `VerifyResult`, or the best failing one.
+    """
+    best: VerifyResult | None = None
+    for shift in range(-abs(max_shift), abs(max_shift) + 1):
+        if shift > 0:
+            ref, cand = reference[:, shift:], candidate[:, : candidate.shape[1] - shift]
+        elif shift < 0:
+            ref, cand = reference[:, : reference.shape[1] + shift], candidate[:, -shift:]
+        else:
+            ref, cand = reference, candidate
+        if ref.shape[1] == 0 or cand.shape[1] == 0:
+            continue
+        width = min(ref.shape[1], cand.shape[1])
+        result = compare(ref[:, :width], cand[:, :width], fmt, sample_rate)
+        if result.ok:
+            return result
+        if best is None:
+            best = result
+    return best if best is not None else VerifyResult(False, "no comparable overlap", "exact")

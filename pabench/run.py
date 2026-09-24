@@ -35,7 +35,7 @@ from pabench.canonical import to_tensor
 from pabench.corpus import DEFAULT_SPECS, CorpusSpec, corpus_files
 from pabench.loaders import Loader
 from pabench.timing import DEFAULT_REPEAT, measure, realtime_factor
-from pabench.verify import compare
+from pabench.verify import compare, compare_seek
 
 Bench = Literal["full", "seek"]
 Status = Literal["ok", "unavailable", "incorrect", "error", "unsupported"]
@@ -224,7 +224,13 @@ def _build_record(
         else:
             reference = full_reference
         candidate = decode()
-        verify_result = compare(reference, candidate, spec.fmt, sample_rate=spec.sample_rate)
+        if bench == "seek":
+            # Seconds-to-frame rounding differs between libraries; allow one frame.
+            verify_result = compare_seek(
+                reference, candidate, spec.fmt, sample_rate=spec.sample_rate
+            )
+        else:
+            verify_result = compare(reference, candidate, spec.fmt, sample_rate=spec.sample_rate)
     except Exception as exc:  # any decoder/verification failure is recorded, never raised
         return _unmeasured(
             library=loader.name,

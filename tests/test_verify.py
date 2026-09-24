@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from pabench.corpus import Fmt
-from pabench.verify import VerifyResult, compare
+from pabench.verify import VerifyResult, compare, compare_seek
 
 WAV_PCM16 = Fmt("wav", "PCM_16")
 WAV_PCM24 = Fmt("wav", "PCM_24")
@@ -182,3 +182,26 @@ def test_unknown_format_raises_value_error_naming_it():
     weird = Fmt("wav", "PCM_8")
     with pytest.raises(ValueError, match="PCM_8"):
         compare(ref, ref.copy(), weird)
+
+
+def test_compare_seek_tolerates_a_one_frame_shift():
+    """Seconds-based seek APIs round differently; one frame apart is a convention."""
+    rng = np.random.default_rng(3)
+    ref = rng.uniform(-0.5, 0.5, size=(1, 2000)).astype(np.float32)
+    shifted = ref[:, 1:].copy()
+    padded = np.concatenate([shifted, ref[:, :1]], axis=1)
+    assert compare_seek(ref, padded, Fmt("wav", "FLOAT")).ok
+
+
+def test_compare_seek_still_rejects_a_real_seek_error():
+    """A genuinely wrong offset is orders of magnitude beyond one frame."""
+    rng = np.random.default_rng(4)
+    ref = rng.uniform(-0.5, 0.5, size=(1, 2000)).astype(np.float32)
+    wrong = rng.uniform(-0.5, 0.5, size=(1, 2000)).astype(np.float32)
+    assert not compare_seek(ref, wrong, Fmt("wav", "FLOAT")).ok
+
+
+def test_compare_seek_exact_match_passes_unshifted():
+    rng = np.random.default_rng(5)
+    ref = rng.uniform(-0.5, 0.5, size=(1, 2000)).astype(np.float32)
+    assert compare_seek(ref, ref.copy(), Fmt("wav", "FLOAT")).ok
