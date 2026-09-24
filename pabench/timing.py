@@ -26,6 +26,11 @@ class Timing:
     min_ms: float
     max_ms: float
     repeat: int
+    #: Interquartile range in ms. Prefer this over `max_ms - min_ms` when judging how
+    #: noisy a measurement was: the range grows with `repeat` by construction, since
+    #: more trials mean more chances to catch an outlier, so ranges from runs with
+    #: different trial counts are not comparable. The IQR is trial-count stable.
+    iqr_ms: float = 0.0
 
 
 def measure[T](
@@ -55,6 +60,7 @@ def measure[T](
         median_ms=statistics.median(durations_ms),
         min_ms=min(durations_ms),
         max_ms=max(durations_ms),
+        iqr_ms=_iqr(durations_ms),
         repeat=repeat,
     )
 
@@ -66,3 +72,15 @@ def realtime_factor(audio_seconds: float, wall_ms: float) -> float:
     """
     wall_seconds = wall_ms / 1000.0
     return audio_seconds / wall_seconds
+
+
+def _iqr(values: list[float]) -> float:
+    """Interquartile range, with a linear-interpolation fallback for tiny samples.
+
+    `statistics.quantiles` needs at least two points; below that the spread is zero
+    by definition rather than undefined.
+    """
+    if len(values) < 2:
+        return 0.0
+    q1, _, q3 = statistics.quantiles(values, n=4, method="inclusive")
+    return q3 - q1

@@ -170,6 +170,13 @@ def _unavailable_and_incorrect(records: Records) -> str:
 
 
 def _noise_ratios(records: Records) -> list[float]:
+    """Per-measurement dispersion as IQR divided by median.
+
+    The interquartile range is used rather than the full range because the range
+    grows with the trial count by construction -- more trials mean more chances to
+    sample an outlier -- so ranges from runs with different `--repeat` values cannot
+    be compared. The IQR is stable across trial counts.
+    """
     ratios = []
     for r in records:
         if r["status"] != "ok":
@@ -177,7 +184,10 @@ def _noise_ratios(records: Records) -> list[float]:
         median = r.get("median_ms")
         if not median:  # None or 0: nothing to divide by
             continue
-        ratios.append((r["max_ms"] - r["min_ms"]) / median)
+        spread = r.get("iqr_ms")
+        if spread is None:  # results produced before iqr_ms existed
+            spread = r["max_ms"] - r["min_ms"]
+        ratios.append(spread / median)
     return ratios
 
 
@@ -293,6 +303,12 @@ _GRIDLINE = "#e1e0d9"
 
 
 def _library_style(index: int) -> dict:
+    """Style for a library's stable slot.
+
+    `index` must come from a library's position in the *whole* results set, never
+    from its position in a filtered subset: colour follows the entity, so a figure
+    that happens to draw fewer libraries must not repaint the survivors.
+    """
     return {
         "color": _PALETTE[index % len(_PALETTE)],
         "linestyle": "-" if index < len(_PALETTE) else "--",
@@ -334,7 +350,7 @@ def _direct_label(ax, end_points: list[tuple[float, float, str, str]]) -> None:
 
     points = sorted(end_points, key=lambda p: p[1])
     log_ys = [math.log10(p[1]) for p in points]
-    min_gap = 0.06  # log10 units; keeps close labels from overlapping
+    min_gap = 0.105  # log10 units; wide enough for 7pt text at this figure height
     adjusted = list(log_ys)
     for i in range(1, len(adjusted)):
         if adjusted[i] - adjusted[i - 1] < min_gap:
@@ -360,10 +376,11 @@ def _direct_label(ax, end_points: list[tuple[float, float, str, str]]) -> None:
         )
 
 
-def _plot_cell(ax, cell_records: Records, libraries: list[str]) -> None:
+def _plot_cell(ax, cell_records: Records, libraries: list[str], style_order: list[str]) -> None:
     _style_axis(ax)
     end_points: list[tuple[float, float, str, str]] = []
-    for index, library in enumerate(libraries):
+    for library in libraries:
+        index = style_order.index(library)
         lib_records = sorted(
             (
                 r
@@ -383,9 +400,14 @@ def _plot_cell(ax, cell_records: Records, libraries: list[str]) -> None:
     _direct_label(ax, end_points)
 
 
-def _plot_bench(records: Records, bench: str, out_dir: Path) -> Path:
+def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[str]) -> Path:
     bench_records = [r for r in records if r["bench"] == bench]
-    libraries = sorted({r["library"] for r in bench_records})
+    # Only libraries with at least one plottable point belong in this figure: a
+    # library that cannot seek has no line in the seek figure, and listing it in
+    # the legend would imply a missing line rather than an unsupported operation.
+    libraries = sorted(
+        {r["library"] for r in bench_records if r["status"] == "ok" and r["median_ms"]}
+    )
     formats = sorted({r["format"] for r in bench_records}, key=_format_sort_key)
     channels_list = sorted({r["channels"] for r in bench_records})
 
@@ -399,7 +421,7 @@ def _plot_bench(records: Records, bench: str, out_dir: Path) -> Path:
             cell_records = [
                 r for r in bench_records if r["channels"] == channels and r["format"] == format_key
             ]
-            _plot_cell(ax, cell_records, libraries)
+            _plot_cell(ax, cell_records, libraries, style_order)
             if row == 0:
                 ax.set_title(format_key or "-", color=_MUTED_TEXT, fontsize=10)
             if col == 0:
@@ -412,8 +434,10 @@ def _plot_bench(records: Records, bench: str, out_dir: Path) -> Path:
 
     if libraries:
         handles = [
-            Line2D([0], [0], label=library, linewidth=2, **_library_style(i))
-            for i, library in enumerate(libraries)
+            Line2D(
+                [0], [0], label=library, linewidth=2, **_library_style(style_order.index(library))
+            )
+            for library in libraries
         ]
         fig.legend(
             handles=handles,
@@ -445,5 +469,8 @@ def write_plots(results: dict, out_dir: Path) -> list[Path]:
     """
     records = results.get("records", [])
     benches = sorted({r["bench"] for r in records}, key=_bench_sort_key)
+    # One stable slot per library across every figure, so a library keeps its colour
+    # whether or not a given figure draws it.
+    style_order = sorted({r["library"] for r in records})
     out_dir = Path(out_dir)
-    return [_plot_bench(records, bench, out_dir) for bench in benches]
+    return [_plot_bench(records, bench, out_dir, style_order) for bench in benches]

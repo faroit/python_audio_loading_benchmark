@@ -341,40 +341,6 @@ def _probe_audioread() -> Loader:
     return _smoke_test(loader)
 
 
-def _probe_stempeg() -> Loader:
-    name = "stempeg"
-    layout: Layout = "frames_first"
-    formats = _WAV_FLAC_MP3
-    notes = None
-    try:
-        import stempeg
-    except Exception as exc:
-        return _unavailable(name, layout, formats, notes, exc)
-
-    def full(path: Path) -> object:
-        data, _ = stempeg.read_stems(str(path), stem_id=0)
-        return data
-
-    def seek(path: Path, start_seconds: float, duration_seconds: float) -> object:
-        data, _ = stempeg.read_stems(
-            str(path), stem_id=0, start=start_seconds, duration=duration_seconds
-        )
-        return data
-
-    loader = Loader(
-        name=name,
-        layout=layout,
-        full=full,
-        seek=seek,
-        version=_package_version(stempeg, "stempeg"),
-        available=True,
-        error=None,
-        formats=formats,
-        notes=notes,
-    )
-    return _smoke_test(loader)
-
-
 def _probe_pedalboard() -> Loader:
     name = "pedalboard"
     layout: Layout = "channels_first"
@@ -459,7 +425,6 @@ PROBES: dict[str, Callable[[], Loader]] = {
     "scipy_mmap": _probe_scipy_mmap,
     "pydub": _probe_pydub,
     "audioread": _probe_audioread,
-    "stempeg": _probe_stempeg,
     "pedalboard": _probe_pedalboard,
     "torchcodec": _probe_torchcodec,
 }

@@ -60,6 +60,10 @@ class Record:
     realtime_factor: float | None
     gate: str | None
     reason: str | None
+    #: Interquartile range in ms. Preferred over `max_ms - min_ms` for judging noise:
+    #: the full range grows with the trial count, so ranges from runs with different
+    #: `--repeat` values are not comparable, while the IQR is stable.
+    iqr_ms: float | None = None
 
 
 def seek_offset(spec: CorpusSpec, seed: int = 0) -> float:
@@ -175,6 +179,7 @@ def _unmeasured(
         median_ms=None,
         min_ms=None,
         max_ms=None,
+        iqr_ms=None,
         realtime_factor=None,
         gate=gate,
         reason=reason,
@@ -274,6 +279,7 @@ def _build_record(
         median_ms=timing.median_ms,
         min_ms=timing.min_ms,
         max_ms=timing.max_ms,
+        iqr_ms=timing.iqr_ms,
         realtime_factor=realtime_factor(audio_seconds, timing.median_ms),
         gate=verify_result.gate,
         reason=None,

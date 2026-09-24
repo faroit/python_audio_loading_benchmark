@@ -19,7 +19,6 @@ libs = [
     "scipy",
     "pydub",
     "audioread",
-    "stempeg",
     "pedalboard",
     "torchcodec",
 ]

@@ -44,7 +44,6 @@ Selected by one rule: it must install with `uv` on Python 3.12 and import cleanl
 | `scipy` memmap | yes | yes | seek is a memmap slice |
 | `pydub` | yes | no | no native seek |
 | `audioread` | yes | no | no native seek |
-| `stempeg` | yes | yes | `start=`/`duration=` |
 | `pedalboard` | yes | yes | `AudioFile.seek` + `read` |
 | `torchcodec` | yes | yes | `get_samples_played_in_range` |
 
@@ -54,6 +53,7 @@ Dropped, with reasons recorded in the README so the removals are not silent:
 - `soxbindings` — `uv` cannot build it (`Failed to build soxbindings==1.2.3`).
 - `torchaudio` — superseded by `torchcodec`; from 2.9 `torchaudio.load` delegates to
   torchcodec, so keeping both would report one decoder twice.
+- `stempeg` — subprocess-per-call; measures process startup, not decoding.
 - `tensorflow`, `tensorflow_io` — the TensorFlow target is removed entirely.
 
 `pedalboard` follows upstream PR #21 in intent, but not in code: that PR's loader ends

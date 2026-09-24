@@ -32,7 +32,7 @@
 `pyproject.toml`: project `pabench`, `requires-python = ">=3.12"`, console script
 `pabench = "pabench.cli:console_main"`, dependencies `numpy`, `soundfile`, `torch`,
 `matplotlib`; optional-dependency group `libs` holding `librosa`, `scipy`, `pydub`,
-`audioread`, `stempeg`, `pedalboard`, `torchcodec`; dependency-group `test` with `pytest`.
+`audioread`, `pedalboard`, `torchcodec`; dependency-group `test` with `pytest`.
 Build backend `hatchling`. Include `[tool.ruff]` with `line-length = 100`.
 
 **Produces:**
