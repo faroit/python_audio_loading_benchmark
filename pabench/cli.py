@@ -149,6 +149,13 @@ def _cmd_report(args: argparse.Namespace) -> int:
         results = _filter_records(results, _select_specs(args))
 
     out_path = Path(args.out)
+    if out_path.is_dir():
+        print(
+            f"--out must name a markdown file, not a directory: {out_path}. "
+            f"Try --out {out_path / 'report.md'}",
+            file=sys.stderr,
+        )
+        return 2
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(render_markdown(results), encoding="utf-8")
     write_plots(results, out_path.parent)
