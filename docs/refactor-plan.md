@@ -84,7 +84,7 @@ passes and just-above fails; mp3 gate accepts a 1000-sample delay shift and reje
 
 ---
 
-### Task 3 — timing and the nine loaders
+### Task 3 — timing and the loaders
 
 **Create:** `pabench/timing.py`, `pabench/loaders.py`, `tests/test_timing.py`,
 `tests/test_loaders.py`. **Delete:** the old `loaders.py` and `utils.py`.
@@ -99,7 +99,7 @@ excluded, `gc.collect()` between trials, `repeat < 1` raises), and
   `seek: Callable[[Path, float, float], object] | None` (path, start_seconds,
   duration_seconds), `version`, `available: bool`, `error: str | None`,
   `formats: frozenset[str]` (containers it supports), `notes: str | None`.
-- `PROBES: dict[str, Callable[[], Loader]]` for the nine libraries in the spec's table.
+- `PROBES: dict[str, Callable[[], Loader]]` for the libraries in the spec's table.
 - `available_loaders(names=None) -> list[Loader]`, raising `KeyError` on an unknown name.
 - A shared smoke test: after importing, each probe decodes a short temporary WAV and
   downgrades to `available=False` carrying the error if that fails. **Import success does
@@ -113,7 +113,7 @@ excluded, `gc.collect()` between trials, `repeat < 1` raises), and
 - `formats` must be honest: `scipy` and `scipy_mmap` are WAV-only.
 
 **Tests:** timing aggregation with an injected clock, warmup excluded, `repeat=0` raises.
-Loaders: registry contains the nine names; unknown name raises; a loader whose callable
+Loaders: registry contains the expected names; unknown name raises; a loader whose callable
 raises probes unavailable; for each available loader, decoding a generated fixture in
 every format it claims matches the soundfile reference under the right gate, and the seek
 result has the expected frame count (+/- one frame for mp3).

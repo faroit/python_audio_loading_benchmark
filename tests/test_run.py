@@ -1,6 +1,6 @@
 """Tests for the run loop that turns loaders plus a corpus into results.
 
-Uses small hand-built stub `Loader`s rather than the real nine adapters, so these
+Uses small hand-built stub `Loader`s rather than the real adapters, so these
 tests exercise the run loop's own logic (availability/format/seek gating,
 verify-then-time ordering, error containment) without depending on which
 optional libraries happen to be installed.

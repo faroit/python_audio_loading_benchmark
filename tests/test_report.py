@@ -6,7 +6,7 @@ deliberate mix of `ok`, `unavailable`, `incorrect`, and `unsupported` records
 across two benches and three formats -- exactly the mix a real run produces.
 
 `soundfile`, `flaky`, `wavonly`, and `ghost` are fixture library names, not the
-nine real adapters; nothing here imports `pabench.loaders`.
+the real adapters; nothing here imports `pabench.loaders`.
 """
 
 from __future__ import annotations
