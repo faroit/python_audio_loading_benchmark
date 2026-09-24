@@ -42,14 +42,23 @@ def _to_array(data: object) -> np.ndarray:
     return np.asarray(data)
 
 
-def compare(reference: object, candidate: object, fmt: Fmt) -> VerifyResult:
+def compare(
+    reference: object,
+    candidate: object,
+    fmt: Fmt,
+    sample_rate: int = SAMPLE_RATE,
+) -> VerifyResult:
     """Compare a candidate decode against the reference decode for `fmt`.
+
+    `sample_rate` is only used by the mp3 relaxed gate, to convert its 50 ms length
+    allowance into samples; it defaults to the corpus's standard rate so existing call
+    sites are unaffected when the corpus isn't 44100 Hz.
 
     Raises `ValueError` if `fmt`'s subtype is not one this gate knows how to grade
     (mp3 is always graded by the relaxed gate regardless of its subtype).
     """
     if fmt.container == "mp3":
-        return _compare_relaxed(reference, candidate)
+        return _compare_relaxed(reference, candidate, sample_rate)
     return _compare_exact(reference, candidate, fmt)
 
 
@@ -76,27 +85,26 @@ def _compare_exact(reference: object, candidate: object, fmt: Fmt) -> VerifyResu
     return VerifyResult(
         ok=False,
         reason=(
-            f"max abs diff {max_abs_diff:.3g} exceeds tolerance "
-            f"(rtol={rtol}, atol={atol:.3g})"
+            f"max abs diff {max_abs_diff:.3g} exceeds tolerance (rtol={rtol}, atol={atol:.3g})"
         ),
         gate="exact",
     )
 
 
-def _compare_relaxed(reference: object, candidate: object) -> VerifyResult:
+def _compare_relaxed(reference: object, candidate: object, sample_rate: int) -> VerifyResult:
     ref = _to_array(reference).astype(np.float64)
     cand = _to_array(candidate).astype(np.float64)
 
     ref_frames = ref.shape[-1]
     cand_frames = cand.shape[-1]
-    max_diff_samples = _MP3_MAX_LENGTH_DIFF_S * SAMPLE_RATE
+    max_diff_samples = _MP3_MAX_LENGTH_DIFF_S * sample_rate
     frame_diff = abs(ref_frames - cand_frames)
     if frame_diff > max_diff_samples:
         return VerifyResult(
             ok=False,
             reason=(
                 f"length difference {frame_diff} samples exceeds "
-                f"{max_diff_samples:.0f} samples (50 ms at {SAMPLE_RATE} Hz)"
+                f"{max_diff_samples:.0f} samples (50 ms at {sample_rate} Hz)"
             ),
             gate="relaxed",
         )
@@ -123,10 +131,7 @@ def _compare_relaxed(reference: object, candidate: object) -> VerifyResult:
     if abs(level_diff_db) > _MP3_MAX_LEVEL_DIFF_DB:
         return VerifyResult(
             ok=False,
-            reason=(
-                f"level difference {level_diff_db:.2f} dB exceeds "
-                f"{_MP3_MAX_LEVEL_DIFF_DB} dB"
-            ),
+            reason=(f"level difference {level_diff_db:.2f} dB exceeds {_MP3_MAX_LEVEL_DIFF_DB} dB"),
             gate="relaxed",
         )
 

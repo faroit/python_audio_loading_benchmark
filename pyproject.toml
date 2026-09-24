@@ -27,6 +27,7 @@ libs = [
 [dependency-groups]
 test = [
     "pytest",
+    "ruff",
 ]
 
 [build-system]
@@ -35,6 +36,26 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 100
+# Legacy pre-refactor scripts, scheduled for deletion in Task 5 (see
+# docs/refactor-plan.md). Not migrated or maintained; excluded rather than
+# fixed so effort isn't spent polishing code about to be removed.
+extend-exclude = [
+    "benchmark_metadata.py",
+    "benchmark_np.py",
+    "benchmark_pytorch.py",
+    "benchmark_tf.py",
+    "plot.py",
+]
+
+[tool.ruff.lint]
+ignore = [
+    # Every probe/adapter (pabench/loaders.py, and later pabench/run.py) must
+    # catch any exception a third-party decoder raises and record it rather
+    # than letting a run abort -- see docs/refactor-design.md, "Error
+    # handling". A deliberately broad `except Exception` is central to that
+    # design, not an oversight this rule should flag.
+    "BLE001",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["pabench"]

@@ -160,6 +160,20 @@ def test_gate_is_relaxed_for_mp3():
     assert result.gate == "relaxed"
 
 
+def test_mp3_length_gate_respects_explicit_sample_rate():
+    # 500 samples is ~11 ms at 44100 Hz (passes) but ~62.5 ms at 8000 Hz (fails):
+    # the same absolute sample difference trips the gate differently depending on
+    # which sample rate the 50 ms allowance is computed against.
+    ref = _stereo_noise(14, frames=8000)
+    candidate = ref[:, :-500]
+
+    at_corpus_rate = compare(ref, candidate, MP3, sample_rate=44100)
+    at_low_rate = compare(ref, candidate, MP3, sample_rate=8000)
+
+    assert at_corpus_rate.ok is True
+    assert at_low_rate.ok is False
+
+
 # ---- unknown format -----------------------------------------------------------
 
 
