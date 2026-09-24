@@ -495,7 +495,14 @@ def _probe_audiosample() -> Loader:
     name = "audiosample"
     layout: Layout = "channels_first"
     formats = _WAV_ONLY
-    notes = "WAV only here: its PyAV path is incompatible with PyAV 18 (Flags.FAST_SEEK)"
+    # Its own parser handles integer-PCM WAV; everything else (float WAV, flac, mp3)
+    # falls through to PyAV, which raises AttributeError against PyAV 18. Declared
+    # WAV-only at container level, so float WAV still reaches the loader and is
+    # reported as an error with that reason rather than hidden.
+    notes = (
+        "integer-PCM WAV only: float WAV, FLAC and MP3 go through its PyAV path, "
+        "which is incompatible with PyAV 18 (Flags.FAST_SEEK)"
+    )
     try:
         import audiosample
         from audiosample import AudioSample
