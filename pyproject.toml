@@ -1,0 +1,40 @@
+[project]
+name = "pabench"
+version = "0.1.0"
+description = "Benchmark of Python audio loading libraries, decoding to torch tensors."
+requires-python = ">=3.12"
+dependencies = [
+    "numpy",
+    "soundfile",
+    "torch",
+    "matplotlib",
+]
+
+[project.scripts]
+pabench = "pabench.cli:console_main"
+
+[project.optional-dependencies]
+libs = [
+    "librosa",
+    "scipy",
+    "pydub",
+    "audioread",
+    "stempeg",
+    "pedalboard",
+    "torchcodec",
+]
+
+[dependency-groups]
+test = [
+    "pytest",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+
+[tool.hatch.build.targets.wheel]
+packages = ["pabench"]

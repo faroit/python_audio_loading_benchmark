@@ -3,6 +3,11 @@
 *.m4a
 .mypy_cache/
 .vscode/
+
+#####=== pabench ===#####
+corpus/
+results/*.json
+
 #####=== Python ===#####
 
 # Byte-compiled / optimized / DLL files
