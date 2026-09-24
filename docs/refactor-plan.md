@@ -12,11 +12,11 @@
 - Default repeat 7, one untimed warmup, `gc.collect()` between trials,
   `time.perf_counter_ns`. Report median, min, max, realtime factor.
 - **No bare `except`.** Every failure is recorded with its reason and the run continues.
-- Correctness gate tolerances, fixed: `PCM_16` → `atol=1.5/32768`, `PCM_24` →
-  `atol=1.5/8388608`, `FLOAT`/`flac-float` → `rtol=1e-5, atol=1e-7`; `mp3` → duration
-  within 50 ms and RMS within 0.5 dB on the common length.
-- Corpus: 44100 Hz; durations 1/10/60/300 s; mono and stereo; `wav` PCM_16/PCM_24/FLOAT,
-  `flac`, `mp3`. Seeded, never committed, gitignored.
+- Correctness gate tolerances, fixed: `PCM_16` → `atol=1.5/32768`, `FLOAT` →
+  `rtol=1e-5, atol=1e-7`; `mp3` → duration within 50 ms and RMS within 0.5 dB on the
+  common length. (`PCM_24` support stays in `verify` but is unused by the sweep.)
+- Corpus: 44100 Hz; durations 1/10/60/300 s; mono and stereo; `wav` PCM_16/FLOAT, `flac`,
+  `mp3`. Seeded, never committed, gitignored. 24-bit is deliberately not in the sweep.
 - **Write everything fresh.** Do not copy code from any other project. Do not reference
   or read any directory outside this repository.
 - Run `uv run pytest` before each commit; it must pass.
@@ -38,10 +38,10 @@ Build backend `hatchling`. Include `[tool.ruff]` with `line-length = 100`.
 **Produces:**
 - `Fmt` — frozen dataclass: `container: str` (`"wav"`/`"flac"`/`"mp3"`), `subtype: str`
   (`"PCM_16"`/`"PCM_24"`/`"FLOAT"`/`"MP3"`), with property `key -> str` (e.g. `wav_pcm16`).
-- `FORMATS: tuple[Fmt, ...]` — the five entries.
+- `FORMATS: tuple[Fmt, ...]` — the four entries.
 - `CorpusSpec` — frozen dataclass: `duration_s: int`, `channels: int`, `fmt: Fmt`,
   `sample_rate: int = 44100`; properties `filename -> str`, `frames -> int`.
-- `DEFAULT_SPECS: tuple[CorpusSpec, ...]` — 4 durations x 2 channels x 5 formats = 40.
+- `DEFAULT_SPECS: tuple[CorpusSpec, ...]` — 4 durations x 2 channels x 4 formats = 32.
 - `generate(corpus_dir, specs=DEFAULT_SPECS, seed=0) -> list[Path]` — WAV/FLAC via
   `soundfile`, MP3 by writing a temp WAV and invoking `ffmpeg -b:a 192k`. Reseed per spec
   so one regenerated file matches the full sweep. Peak 0.5 to avoid integer clipping.

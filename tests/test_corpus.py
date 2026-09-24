@@ -12,21 +12,21 @@ from pabench.corpus import (
 )
 
 
-def test_formats_has_five_entries():
-    assert len(FORMATS) == 5
-    assert len(set(FORMATS)) == 5
+def test_formats_has_four_entries():
+    assert len(FORMATS) == 4
+    assert len(set(FORMATS)) == 4
+    assert {f.key for f in FORMATS} == {"wav_pcm16", "wav_float", "flac_pcm16", "mp3"}
 
 
 def test_fmt_key():
     assert Fmt("wav", "PCM_16").key == "wav_pcm16"
-    assert Fmt("wav", "PCM_24").key == "wav_pcm24"
     assert Fmt("wav", "FLOAT").key == "wav_float"
     assert Fmt("flac", "PCM_16").key == "flac_pcm16"
     assert Fmt("mp3", "MP3").key == "mp3"
 
 
 def test_default_specs_axis_values():
-    assert len(DEFAULT_SPECS) == 40
+    assert len(DEFAULT_SPECS) == 32
 
     durations = {s.duration_s for s in DEFAULT_SPECS}
     channels = {s.channels for s in DEFAULT_SPECS}
@@ -40,7 +40,7 @@ def test_default_specs_axis_values():
 
 def test_default_specs_are_unique_combinations():
     combos = {(s.duration_s, s.channels, s.fmt) for s in DEFAULT_SPECS}
-    assert len(combos) == 40
+    assert len(combos) == 32
 
 
 def test_filenames_unique():
@@ -61,7 +61,6 @@ def test_corpus_files_raises_when_missing(tmp_path):
 def _small_specs():
     return (
         CorpusSpec(duration_s=1, channels=1, fmt=Fmt("wav", "PCM_16")),
-        CorpusSpec(duration_s=1, channels=2, fmt=Fmt("wav", "PCM_24")),
         CorpusSpec(duration_s=1, channels=1, fmt=Fmt("wav", "FLOAT")),
         CorpusSpec(duration_s=1, channels=2, fmt=Fmt("flac", "PCM_16")),
     )

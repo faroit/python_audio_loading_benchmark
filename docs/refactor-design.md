@@ -73,14 +73,16 @@ Generated locally, never committed. Seeded so a regenerated corpus is byte-ident
 - Sample rate 44100.
 - Durations 1, 10, 60, 300 s.
 - Channels: mono and stereo.
-- Formats: `wav` in `PCM_16`, `PCM_24` and `FLOAT`; `flac` (16-bit); `mp3` (CBR 192k).
+- Formats: `wav` in `PCM_16` and `FLOAT`; `flac` (16-bit); `mp3` (CBR 192k).
 
 WAV and FLAC are written with `soundfile`; MP3 is encoded with the `ffmpeg` binary, which
 is the one non-Python prerequisite.
 
-Bit depth is a corpus axis because it changes the ranking, not merely the magnitude:
-FFmpeg-backed decoders are markedly slower converting 16-bit PCM to float than 24-bit or
-float32, which a wav-only-16-bit corpus would report as a flat property of "wav".
+Bit depth remains an axis, as `PCM_16` versus `FLOAT`, because it changes the ranking and
+not merely the magnitude: FFmpeg-backed decoders are markedly slower converting 16-bit PCM
+to float than they are reading float32, which a single-subtype corpus would report as a
+flat property of "wav". 24-bit was dropped from the sweep: it sits between the two cases
+and added a third of the corpus for no distinct finding.
 
 ## Measurement
 

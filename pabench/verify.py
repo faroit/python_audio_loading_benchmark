@@ -20,6 +20,8 @@ from pabench.corpus import SAMPLE_RATE, Fmt
 # rtol, atol per wav/flac subtype. Fixed by the design doc; never widen these.
 _EXACT_TOLERANCES: dict[str, tuple[float, float]] = {
     "PCM_16": (0.0, 1.5 / 32768),
+    # Retained though the default sweep no longer includes 24-bit, so the tolerance
+    # stays pinned by its boundary tests for anyone re-adding the format.
     "PCM_24": (0.0, 1.5 / 8388608),
     "FLOAT": (1e-5, 1e-7),
 }
