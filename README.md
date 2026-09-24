@@ -1,120 +1,191 @@
-# Python Audio-Loading Benchmark
+# pabench — Python audio-loading benchmark
 
-The aim of his repository is to evaluate the loading performance of various audio I/O packages interfaced from python.
+`pabench` measures how fast nine Python audio-decoding libraries can get a WAV,
+FLAC, or MP3 file into a **`float32`, channels-first PyTorch tensor** — the
+representation almost every audio model wants — both for a **full-file decode**
+and for a **seek (excerpt) decode**. It is `uv`-managed, has no untracked
+"it worked on my machine" state, and checks every library's output for
+correctness before it lets that library's timing count.
 
-This is relevant for machine learning models that today often process raw (time domain) audio and assembling a batch on the fly. It is therefore important to load the audio as fast as possible. At the same time a library should ideally support a variety of uncompressed and compressed audio formats and also is capable of loading only chunks of audio (seeking). The latter is especially important for models that cannot easily work with samples of variable length (convnets).
+See `docs/refactor-design.md` for the full design rationale and
+`docs/refactor-plan.md` for how it was built.
 
-## Tested Libraries
+## What is measured
 
-| Library                                                                                                                                 | Version | Short-Name/Code  | Out Type          | Supported codecs                                    | Excerpts/Seeking |
-| --------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------- | ----------------- | --------------------------------------------------- | ---------------- |
-| [scipy.io.wavfile](https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.io.wavfile.read.html#scipy.io.wavfile.read)        | 1.9.3   | `scipy`          | Numpy             | PCM (only 16 bit)                                   | ❌               |
-| [scipy.io.wavfile memmap](https://docs.scipy.org/doc/scipy-0.14.0/reference/generated/scipy.io.wavfile.read.html#scipy.io.wavfile.read) | 1.9.3   | `scipy_mmap`     | Numpy             | PCM (only 16 bit)                                   | ✅               |
-| [soundfile](https://pysoundfile.readthedocs.io/en/latest/) ([libsndfile](http://www.mega-nerd.com/libsndfile/))                         | 0.12.1  | `soundfile`      | Numpy             | PCM, Ogg, Flac, MP3                                 | ✅               |
-| [pydub](https://github.com/jiaaro/pydub)                                                                                                | 0.25.1  | `pydub`          | Python Array      | PCM, MP3, OGG or other FFMPEG/libav supported codec | ❌               |
-| [aubio](https://github.com/aubio/aubio)                                                                                                 | 0.4.9   | `aubio`          | Numpy Array       | PCM, MP3, OGG or other avconv supported code        | ✅               |
-| [audioread](https://github.com/beetbox/audioread) ([FFMPEG](https://www.ffmpeg.org/))                                                   | 2.1.9   | `ar_ffmpeg`      | Numpy Array       | all of FFMPEG                                       | ❌               |
-| [librosa](https://librosa.org/)                                                                                                         | 0.10.0   | `librosa`        | Numpy Array       | all of soundfile                                   | ✅               |
-| [tensorflow `tf.io.audio.decode_wav`](https://www.tensorflow.org/api_docs/python/tf/contrib/ffmpeg/decode_audio)                        | 2.11.0   | `tf_decode_wav`  | Tensorflow Tensor | PCM (only 16 bit)                                   | ❌               |
-| [tensorflow-io `from_audio`](https://www.tensorflow.org/io/api_docs/python/tfio/v0/IOTensor#from_audio)                                 | 0.30.0  | `tfio_fromaudio` | Tensorflow Tensor | PCM, Ogg, Flac                                      | ✅               |
-| [torchaudio](https://github.com/pytorch/audio) (sox_io)                                                                                 | 0.13.1   | `torchaudio`     | PyTorch Tensor    | all codecs supported by Sox                         | ✅               |
-| [torchaudio](https://github.com/pytorch/audio) (soundfile)                                                                              | 0.13.1   | `torchaudio`     | PyTorch Tensor    | all codecs supported by Soundfile                   | ✅               |
-| [soxbindings](https://github.com/pseeth/soxbindings)                                                                                    | 0.9.0   | `soxbindings`    | Numpy Tensor      | all codecs supported by Soundfile                   | ✅               |
-| [stempeg](https://github.com/faroit/stempeg)                                                                                            | 0.2.3   | `stempeg`        | Numpy Tensor      | all codecs supported by FFMPEG                      | ✅               |
+For every (library, corpus file) pair, `pabench` runs two benchmarks:
 
-### Not included
+- **full** — decode the entire file to a tensor.
+- **seek** — decode a fixed 1-second excerpt starting at a deterministic offset
+  in the middle half of the file, via whichever seek API the library exposes.
+  Libraries with no seek API are excluded from this benchmark rather than
+  measured as read-everything-then-slice (see the library table below).
 
-- **[audioread (coreaudio)](https://github.com/beetbox/audioread/blob/master/audioread/macca.py)**: only available on macOS.
-- **[audioread (gstreamer)](https://github.com/beetbox/audioread/blob/master/audioread/gst.py)**: too difficult to install.
-- **[madmom](https://github.com/CPJKU/madmom)**: same ffmpeg interface as `ar_ffmpeg`.
-- **[pymad](https://github.com/jaqx0r/pymad)**: only support for MP3, also very slow.
-- **[python builtin `wave`](https://docs.python.org/3.7/library/wave.html)**: too limited cocdec support.
+Every library's output — numpy array, torch tensor, or anything else it hands
+back — is converted to `float32` `(channels, frames)` **inside the timed
+region**, because a caller who wants a tensor pays for that conversion.
+
+### Protocol
+
+1. One **untimed warmup** decode per (library, file, benchmark), which also
+   warms the OS page cache for that file.
+2. **7 timed trials** by default (`--repeat`), each preceded by `gc.collect()`
+   so a garbage-collection pause in one trial can't leak into the next, timed
+   with `time.perf_counter_ns`.
+3. The **median** trial is the headline number; min and max are reported
+   alongside it as the spread.
+4. Every library is checked against a `soundfile`-decoded reference **before**
+   its timings are allowed to count (see "Correctness gate" below). A library
+   that fails the gate is reported as incorrect, with the reason, and its
+   timings are withheld — never silently dropped.
+
+Timings are **warm-page-cache**, over a **locally generated, synthetic
+white-noise corpus** (44.1 kHz, 1/10/60/300 s, mono/stereo). They describe
+decode speed against this machine's page cache and this synthetic corpus —
+not cold-disk I/O, and not real program material. See "Caveats" below.
+
+## Quickstart
+
+```bash
+uv sync --extra libs
+uv run pabench all
+```
+
+This is the single reproduce command: it generates only the corpus files that
+are missing, runs both benchmarks against every library that's installed and
+importable, and writes a Markdown report plus plots under `results/`. No
+audio is committed to the repository — the corpus is generated locally and
+gitignored (`corpus/`).
+
+Each subcommand is also available on its own:
+
+```bash
+uv run pabench gen                     # generate the corpus
+uv run pabench run --library soundfile # run one library
+uv run pabench report                  # render results.json -> report.md + plots
+```
+
+All four subcommands (`gen`, `run`, `report`, `all`) accept `--corpus-dir`,
+`--durations`, `--channels`, and `--formats` to work on a subset of the
+default 32-file corpus (4 durations x 2 channel counts x 4 formats); `run`
+additionally takes repeatable `--library`, `--bench {full,seek,both}`,
+`--repeat`, and `--out`. Run `uv run pabench <subcommand> --help` for the
+full list.
+
+FFmpeg's shared libraries (needed by `torchcodec`) are located automatically:
+on macOS, `pabench`'s console entry point finds Homebrew/MacPorts FFmpeg and
+re-executes itself once with `DYLD_FALLBACK_LIBRARY_PATH` set, since dyld
+only reads that variable at process start and can't be fixed up once the
+interpreter is already running (see `pabench/ffmpeg_env.py` and
+`docs/refactor-design.md`).
+
+## Prerequisites
+
+- Python 3.12 and [`uv`](https://docs.astral.sh/uv/).
+- The `ffmpeg` binary on `PATH`, for MP3 corpus generation.
+
+## Libraries
+
+| Library | Full-file | Seek | Notes |
+| --- | --- | --- | --- |
+| [`soundfile`](https://pysoundfile.readthedocs.io/) | yes | yes | libsndfile; the correctness reference every other library is checked against |
+| [`librosa`](https://librosa.org/) | yes | yes | `offset=`/`duration=` |
+| [`scipy.io.wavfile`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.io.wavfile.read.html) | yes | no | WAV only; no seek API |
+| `scipy.io.wavfile` (memmap) | yes | yes | WAV only; seek is a memmap slice |
+| [`pydub`](https://github.com/jiaaro/pydub) | yes | no | no native seek |
+| [`audioread`](https://github.com/beetbox/audioread) | yes | no | no native seek; always yields 16-bit PCM, so it cannot pass the exact gate against a float32 or 24-bit source |
+| [`stempeg`](https://github.com/faroit/stempeg) | yes | yes | `start=`/`duration=` |
+| [`pedalboard`](https://github.com/spotify/pedalboard) | yes | yes | `AudioFile.seek` + `.read` |
+| [`torchcodec`](https://github.com/pytorch/torchcodec) | yes | yes | `get_samples_played_in_range`; imports cleanly even when its native FFmpeg bindings can't load, so `pabench` smoke-tests a real decode before trusting it as available |
+
+A library is selected by one rule: it must install with `uv` on Python 3.12
+and import cleanly. Every library above is probed on every run, whether or
+not it's installed — an unavailable library is reported as such, with its
+import error, never silently omitted (see `docs/refactor-design.md`, "Error
+handling").
+
+### Dropped libraries
+
+These appeared in earlier versions of this benchmark and are deliberately not
+here:
+
+- **`aubio`**, **`soxbindings`** — `uv` cannot build either of them
+  (`Failed to build aubio==0.4.9`, `Failed to build soxbindings==1.2.3`).
+- **`torchaudio`** — from PyTorch 2.9, `torchaudio.load()` delegates to
+  `torchcodec` internally, so keeping both would report the same decoder
+  twice under two names.
+- **TensorFlow / `tensorflow_io`, and the plain-numpy target** — this
+  benchmark is torch-only now; loading to a numpy array or a TensorFlow
+  tensor is out of scope.
+
+## Correctness gate
+
+No library's timing counts until its decode is checked against a
+`soundfile`-decoded reference. The tolerance is per format, because one
+tolerance isn't right for all three:
+
+- **WAV / FLAC** — sample-exact, within a tolerance set by the source bit
+  depth: 1.5 LSB for 16-bit PCM (`atol = 1.5/32768`), `atol=1e-7` for
+  float32. The 1-LSB allowance exists because normalisation conventions
+  legitimately differ between libraries (dividing by 32767 vs. 32768); it
+  still rejects downmixing, truncation, channel swaps, and any real gain
+  error.
+- **MP3 — a relaxed gate, and a weaker guarantee.** MP3 decoders disagree on
+  encoder delay, so decoded lengths differ by roughly a thousand samples and
+  samples never match bit-for-bit, even between two correct decoders. MP3 is
+  therefore graded on **decoded duration within 50 ms of the reference** and
+  **RMS level within 0.5 dB** after trimming both signals to their common
+  length. A library that passes the MP3 gate is verified to be reading the
+  right audio at roughly the right level — **not** verified sample-exact the
+  way its WAV/FLAC results are. The report labels every MP3 result with this
+  weaker gate rather than leaving the distinction implicit.
+
+Bit depth remains a corpus axis (`PCM_16` vs. `FLOAT` WAV) because it changes
+which library wins, not just the magnitude: FFmpeg-backed decoders are
+markedly slower converting 16-bit PCM to float than reading float32 directly.
+24-bit WAV was in an earlier version of this sweep and has been dropped: it
+sits between the two remaining cases and added a third of the corpus for no
+distinct finding.
+
+## Caveats
+
+- **Warm page cache.** Every trial (after the untimed warmup) reads a file
+  that the OS has already cached. This measures decode speed, not storage
+  I/O or cold-start latency.
+- **Synthetic corpus.** The corpus is generated white noise, not music or
+  speech. It is reproducible and free of licensing concerns, but a decoder's
+  relative speed on real program material — silence runs, transients,
+  particular sample-rate or bit-depth combinations in the wild — may differ.
+- **Single machine, single process.** No multiprocessing, no DataLoader
+  batching; that would measure a different thing (I/O-bound batch throughput)
+  than per-call decode latency.
 
 ## Results
 
-The benchmark loads a number of (single channel) audio files of different length (between 1 and 151 seconds) and measures the time until the audio is converted to a tensor. Depending on the target tensor type (either `numpy`, `pytorch` or `tensorflow`) a different number of libraries were compared. E.g. when the output type is `numpy` and the target tensor type is `tensorflow`, the loading time included the cast operation to the target tensor. Furthermore, multiprocessing was disabled for data loaders. So especially for deep learning applications the loading speed doesn't necessarily reprent the batch loading speed.
+*No benchmark has been run for this version of `pabench` yet.* Results are
+intentionally **not** included in this README: publishing numbers before a
+real run, or carrying over numbers from the pre-refactor benchmark (a
+different measurement protocol, a different library set, and a different
+target tensor type), would misrepresent what this version of the tool
+measures.
 
-**All results shown below, depict loading time **in seconds\*\*.
+Once `uv run pabench all` has been run on a target machine, its Markdown
+report (`results/report.md`) and plots (`results/full.png`,
+`results/seek.png`) belong here.
 
-### Load to Numpy Tensor
-
-![](results/benchmark_np.png)
-
-### Load to PyTorch Tensor
-
-![](results/benchmark_pytorch.png)
-
-### Load to Tensorflow Tensor
-
-![](results/benchmark_tf.png)
-
-### Getting metadata information
-
-In addition to loading the file, one might also be interested in extracting
-metadata. To benchmark this we asked for every file to provide metadata for
-_sampling rate_, _channels_, _samples_, and _duration_. All in consecutive
-calls, which means the file is not allowed to be opened once and extract all
-metadata together. Note, that we have excluded `pydub` from the benchmark
-results on metadata as it was significantly slower than the other tools.
-
-![](results/benchmark_metadata.png)
-
-## Running the Benchmark
-
-### Generate sample data
-
-To test the loading speed, we generate different durations of random (noise) audio data and encode it either to **PCM 16bit WAV**, **MP3 CBR**, or **MP4**.
-The data is generated by using a shell script. To generate the data in the folder `AUDIO`, run
+## Development
 
 ```bash
-generate_audio.sh
+uv sync --extra libs --group test
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
 ```
 
-### Setting up using Docker
-
-Build the docker container using
-
-```bash
-docker build -t audio_benchmark .
-```
-
-It installs all the package requirements for all audio libraries.
-Afterwards, mount the data directory into the docker container and run `run.sh` inside the
-container, e.g.:
-
-```bash
-docker run -v /home/user/repos/python_audio_loading_benchmark/:/app \
-    -it audio_benchmark:latest /bin/bash run.sh
-```
-
-### Setting up in a virtual environment
-
-Create a virtual environment, install the necessary dependencies and run the
-benchmark with
-
-```bash
-virtualenv --python=/usr/bin/python3 --no-site-packages _env
-source _env/bin/activate
-pip install -r requirements.txt
-pip install git+https://github.com/pytorch/audio.git
-```
-
-### Benchmarking
-
-Run the benchmark with
-
-```bash
-bash run.sh
-```
-
-and plot the result with
-
-```bash
-python plot.py
-```
-
-This generates PNG files in the `results` folder.
-The data is generated by using a shell script. To generate the data in the folder `AUDIO`, run `generate_audio.sh`.
+No optional library is required to run the test suite: a loader for a
+library that isn't installed (or whose native components fail to load) is
+recorded `available=False`, and the tests that need a real decode are
+parametrized only over the libraries that came back available in the current
+environment.
 
 ## Authors
 
@@ -122,4 +193,6 @@ The data is generated by using a shell script. To generate the data in the folde
 
 ## Contribution
 
-We encourage interested users to contribute to this repository in the issue section and via pull requests. Particularly interesting are notifications of new tools and new versions of existing packages. Since benchmarks are subjective, I (@faroit) will reran the benchmark on our server again.
+We encourage interested users to contribute to this repository in the issue
+section and via pull requests. Particularly interesting are notifications of
+new tools and new versions of existing packages.
