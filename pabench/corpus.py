@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -97,6 +98,28 @@ def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+SEEKTABLE_INSTALL_HINT = """\
+WARNING: metaflac not found, so the generated FLAC files will have no SEEKTABLE.
+
+Libraries must then locate a seek position by binary-searching the frames instead of
+jumping straight to it, which is not what a FLAC from the wild looks like -- the
+reference encoder writes a seektable by default. The FLAC seek numbers from this corpus
+describe the harder case, and the report records which case was measured.
+
+metaflac ships with the `flac` package:
+
+    Debian / Ubuntu   sudo apt install flac
+    Fedora / RHEL     sudo dnf install flac
+    Arch              sudo pacman -S flac
+    macOS (Homebrew)  brew install flac
+    conda             conda install -c conda-forge flac
+
+Then regenerate the corpus (existing files are not rewritten):
+
+    rm -rf <corpus-dir> && pabench gen
+"""
+
+
 def metaflac_available() -> bool:
     """Whether `metaflac` is on PATH, for writing FLAC SEEKTABLE blocks."""
     return shutil.which("metaflac") is not None
@@ -175,6 +198,11 @@ def generate(
     """
     corpus_dir = Path(corpus_dir)
     corpus_dir.mkdir(parents=True, exist_ok=True)
+
+    if flac_seektable and not metaflac_available():
+        wants_flac = any(spec.fmt.container == "flac" for spec in specs)
+        if wants_flac:
+            print(SEEKTABLE_INSTALL_HINT, file=sys.stderr)
 
     paths: list[Path] = []
     for spec in specs:

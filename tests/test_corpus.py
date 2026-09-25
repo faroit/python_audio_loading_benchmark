@@ -173,3 +173,19 @@ def test_flac_seektable_can_be_suppressed(tmp_path):
     without = generate(tmp_path / "without", (spec,), flac_seektable=False)[0]
     assert has_seektable(with_table)
     assert not has_seektable(without)
+
+
+def test_missing_metaflac_warns_with_install_instructions(tmp_path, monkeypatch, capsys):
+    """A silently seektable-less corpus measures the harder case without saying so."""
+    monkeypatch.setattr("pabench.corpus.metaflac_available", lambda: False)
+    generate(tmp_path, (CorpusSpec(duration_s=1, channels=1, fmt=Fmt("flac", "PCM_16")),))
+    err = capsys.readouterr().err
+    assert "metaflac not found" in err
+    assert "apt install flac" in err
+    assert "brew install flac" in err
+
+
+def test_no_metaflac_warning_when_no_flac_is_generated(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr("pabench.corpus.metaflac_available", lambda: False)
+    generate(tmp_path, (CorpusSpec(duration_s=1, channels=1, fmt=Fmt("wav", "PCM_16")),))
+    assert "metaflac" not in capsys.readouterr().err
