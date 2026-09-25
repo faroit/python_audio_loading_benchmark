@@ -12,7 +12,6 @@ weaker correctness guarantee than WAV/FLAC.
 
 from __future__ import annotations
 
-import math
 import statistics
 from pathlib import Path
 from typing import Any
@@ -22,7 +21,8 @@ import matplotlib
 matplotlib.use("Agg")  # must precede importing pyplot: no display is ever available here
 
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
+import pandas as pd
+import seaborn as sns
 
 from pabench.corpus import FORMATS
 
@@ -304,170 +304,114 @@ _MUTED_TEXT = "#52514e"
 _GRIDLINE = "#e1e0d9"
 
 
-def _library_style(index: int) -> dict:
-    """Style for a library's stable slot.
+def _library_styles(style_order: list[str]) -> tuple[dict, dict, dict]:
+    """Colour and dash maps keyed by library name, stable across every figure.
 
-    `index` must come from a library's position in the *whole* results set, never
-    from its position in a filtered subset: colour follows the entity, so a figure
-    that happens to draw fewer libraries must not repaint the survivors.
+    Keying by name rather than by position matters: a figure that draws fewer
+    libraries (the seek grid omits those that cannot seek) must not repaint the
+    ones that remain. The palette has eight validated hues; past eight, a dash
+    pattern carries the difference, so identity never rests on a ninth colour
+    that would sit too close to an existing one.
     """
-    return {
-        "color": _PALETTE[index % len(_PALETTE)],
-        "linestyle": "-" if index < len(_PALETTE) else "--",
-    }
-
-
-def _style_axis(ax) -> None:
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.grid(True, which="both", linewidth=0.6, color=_GRIDLINE)
-    ax.set_axisbelow(True)
-    for spine in ("top", "right"):
-        ax.spines[spine].set_visible(False)
-    for spine in ("left", "bottom"):
-        ax.spines[spine].set_color(_GRIDLINE)
-    ax.tick_params(colors=_MUTED_TEXT, labelsize=7)
-
-
-def _direct_label(ax, end_points: list[tuple[float, float, str, str]]) -> None:
-    """Label each line at the panel's right edge, nudging apart labels that collide.
-
-    `end_points` is `(x, y, library, color)` for each line's last plotted point.
-    Labels are sorted by y and pushed apart in log-space by a fixed minimum gap;
-    a thin leader line in the series color connects a nudged label back to its
-    actual data point, so a moved label doesn't read as belonging to a neighbour.
-    """
-    if not end_points:
-        ax.text(
-            0.5,
-            0.5,
-            "no data",
-            transform=ax.transAxes,
-            ha="center",
-            va="center",
-            color=_MUTED_TEXT,
-            fontsize=8,
-        )
-        return
-
-    points = sorted(end_points, key=lambda p: p[1])
-    log_ys = [math.log10(p[1]) for p in points]
-    min_gap = 0.105  # log10 units; wide enough for 7pt text at this figure height
-    adjusted = list(log_ys)
-    for i in range(1, len(adjusted)):
-        if adjusted[i] - adjusted[i - 1] < min_gap:
-            adjusted[i] = adjusted[i - 1] + min_gap
-
-    x_max = max(p[0] for p in points)
-    ax.set_xlim(ax.get_xlim()[0], x_max * 2.2)
-
-    for (x, y, library, color), log_y in zip(points, adjusted):
-        label_y = 10**log_y
-        if abs(label_y - y) > 1e-9 * max(abs(y), 1e-9):
-            ax.plot([x, x_max], [y, label_y], linewidth=0.6, linestyle=":", color=color, alpha=0.6)
-        ax.annotate(
-            library,
-            xy=(x_max, label_y),
-            xytext=(6, 0),
-            textcoords="offset points",
-            va="center",
-            ha="left",
-            fontsize=7,
-            color=_MUTED_TEXT,
-            annotation_clip=False,
-        )
-
-
-def _plot_cell(ax, cell_records: Records, libraries: list[str], style_order: list[str]) -> None:
-    _style_axis(ax)
-    end_points: list[tuple[float, float, str, str]] = []
-    for library in libraries:
-        index = style_order.index(library)
-        lib_records = sorted(
-            (
-                r
-                for r in cell_records
-                if r["library"] == library and r["status"] == "ok" and r["median_ms"]
-            ),
-            key=lambda r: r["duration_s"],
-        )
-        if not lib_records:
-            continue
-        xs = [r["duration_s"] for r in lib_records]
-        ys = [r["median_ms"] for r in lib_records]
-        style = _library_style(index)
-        ax.plot(xs, ys, linewidth=2, marker="o", markersize=4, **style)
-        end_points.append((xs[-1], ys[-1], library, style["color"]))
-
-    _direct_label(ax, end_points)
+    colors, dashes, markers = {}, {}, {}
+    for index, name in enumerate(style_order):
+        wrapped = index // len(_PALETTE)
+        colors[name] = _PALETTE[index % len(_PALETTE)]
+        # A wrapped entry reuses a hue, so it carries two further channels rather than
+        # one: a long dash and a different marker. Colour plus a faint dash alone is
+        # not enough to tell two same-coloured lines apart in a dense panel.
+        dashes[name] = "" if wrapped == 0 else (6, 2)
+        markers[name] = ("o", "s", "^", "D")[wrapped % 4]
+    return colors, dashes, markers
 
 
 def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[str]) -> Path:
-    bench_records = [r for r in records if r["bench"] == bench]
-    # Only libraries with at least one plottable point belong in this figure: a
-    # library that cannot seek has no line in the seek figure, and listing it in
-    # the legend would imply a missing line rather than an unsupported operation.
-    libraries = sorted(
-        {r["library"] for r in bench_records if r["status"] == "ok" and r["median_ms"]}
-    )
-    formats = sorted({r["format"] for r in bench_records}, key=_format_sort_key)
-    channels_list = sorted({r["channels"] for r in bench_records})
-
-    n_rows = max(len(channels_list), 1)
-    n_cols = max(len(formats), 1)
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(4.2 * n_cols, 3.2 * n_rows), squeeze=False)
-
-    for row, channels in enumerate(channels_list or [None]):
-        for col, format_key in enumerate(formats or [None]):
-            ax = axes[row][col]
-            cell_records = [
-                r for r in bench_records if r["channels"] == channels and r["format"] == format_key
-            ]
-            _plot_cell(ax, cell_records, libraries, style_order)
-            if row == 0:
-                ax.set_title(format_key or "-", color=_MUTED_TEXT, fontsize=10)
-            if col == 0:
-                ylabel = f"{channels}ch median (ms)" if channels is not None else "median (ms)"
-                ax.set_ylabel(ylabel, color=_MUTED_TEXT, fontsize=8)
-            if row == n_rows - 1:
-                ax.set_xlabel("duration (s)", color=_MUTED_TEXT, fontsize=8)
-
-    fig.suptitle(f"{bench} decode: duration vs. median time (log-log)", color="#0b0b0b")
-
-    if libraries:
-        handles = [
-            Line2D(
-                [0], [0], label=library, linewidth=2, **_library_style(style_order.index(library))
-            )
-            for library in libraries
-        ]
-        fig.legend(
-            handles=handles,
-            loc="center left",
-            bbox_to_anchor=(1.0, 0.5),
-            fontsize=8,
-            frameon=False,
-            title="library",
-        )
-
-    fig.tight_layout(rect=(0, 0, 0.86, 0.95))
-
+    """Render one bench as a seaborn FacetGrid: formats across, channels down."""
+    plotted = [
+        r
+        for r in records
+        if r["bench"] == bench and r["status"] == "ok" and r["median_ms"] is not None
+    ]
     out_path = Path(out_dir) / f"{bench}.png"
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150, bbox_inches="tight")
-    plt.close(fig)
+
+    if not plotted:
+        fig = plt.figure(figsize=(6, 2))
+        fig.text(0.5, 0.5, f"no {bench} data", ha="center", va="center", color=_MUTED_TEXT)
+        fig.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return out_path
+
+    frame = pd.DataFrame(
+        [
+            {
+                "duration": r["duration_s"],
+                "median_ms": r["median_ms"],
+                "library": r["library"],
+                "format": r["format"],
+                "channels": f"{r['channels']}ch",
+            }
+            for r in plotted
+        ]
+    )
+    # Only libraries actually drawn reach the legend; a library that cannot seek is
+    # an unsupported operation, not a line someone should hunt for.
+    present = [name for name in style_order if name in set(frame["library"])]
+    colors, dashes, markers = _library_styles(style_order)
+    formats = [f for f in sorted({*frame["format"]}, key=_format_sort_key)]
+
+    sns.set_theme(style="whitegrid", rc={"grid.color": _GRIDLINE, "grid.linewidth": 0.6})
+    grid = sns.relplot(
+        data=frame,
+        x="duration",
+        y="median_ms",
+        hue="library",
+        style="library",
+        hue_order=present,
+        style_order=present,
+        palette={name: colors[name] for name in present},
+        dashes={name: dashes[name] for name in present},
+        markers={name: markers[name] for name in present},
+        col="format",
+        col_order=formats,
+        row="channels",
+        row_order=sorted({*frame["channels"]}),
+        kind="line",
+        markersize=5,
+        linewidth=1.8,
+        height=2.9,
+        aspect=1.25,
+        facet_kws={"sharey": "row", "legend_out": True},
+    )
+    grid.set(xscale="log", yscale="log")
+    grid.set_axis_labels("duration (s)", "median (ms)")
+    grid.set_titles(row_template="{row_name}", col_template="{col_name}")
+    grid.figure.suptitle(
+        f"{bench} decode: duration vs. median time (log-log, lower is better)",
+        y=1.02,
+        color="#0b0b0b",
+    )
+    if grid.legend is not None:
+        grid.legend.set_title("library")
+    for ax in grid.axes.flat:
+        ax.tick_params(colors=_MUTED_TEXT, labelsize=8)
+        ax.xaxis.label.set_color(_MUTED_TEXT)
+        ax.yaxis.label.set_color(_MUTED_TEXT)
+
+    grid.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(grid.figure)
     return out_path
 
 
 def write_plots(results: dict, out_dir: Path) -> list[Path]:
     """Write one figure per bench present in `results["records"]` under `out_dir`.
 
-    Each figure is a log-log grid of duration versus median decode time (ms),
-    faceted by format (columns) and channel count (rows), with one line per
-    library and a direct label at each line's right edge. Only `status == "ok"`
-    records are plotted; records with withheld (`None`) timings are skipped
-    without raising, and a panel with no `ok` data at all is still rendered
-    (as an empty, labelled "no data" panel) rather than omitted.
+    Each figure is a seaborn `FacetGrid`: a log-log grid of duration versus median
+    decode time (ms), formats across the columns and channel counts down the rows,
+    one line per library, with a single legend outside the axes. Only `status == "ok"`
+    records with a timing are plotted; withheld (`None`) timings are skipped without
+    raising, and a bench with no plottable data yields a placeholder figure rather
+    than no file.
     """
     records = results.get("records", [])
     benches = sorted({r["bench"] for r in records}, key=_bench_sort_key)
