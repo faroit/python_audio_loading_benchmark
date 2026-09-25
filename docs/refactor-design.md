@@ -42,7 +42,6 @@ Selected by one rule: it must install with `uv` on Python 3.12 and import cleanl
 | `librosa` | yes | yes | 1.0.0; `offset=`/`duration=` |
 | `scipy.io.wavfile` | yes | no | WAV only, no seek API |
 | `scipy` memmap | yes | yes | seek is a memmap slice |
-| `pydub` | yes | no | no native seek |
 | `audioread` | yes | no | no native seek |
 | `pedalboard` | yes | yes | `AudioFile.seek` + `read` |
 | `torchcodec` | yes | yes | `get_samples_played_in_range` |
@@ -57,6 +56,8 @@ Dropped, with reasons recorded in the README so the removals are not silent:
 - `torchaudio` — superseded by `torchcodec`; from 2.9 `torchaudio.load` delegates to
   torchcodec, so keeping both would report one decoder twice.
 - `stempeg` — subprocess-per-call; measures process startup, not decoding.
+- `pydub` — consistently at the back of the field (166 ms on float WAV, 336 ms on MP3
+  at 300 s stereo, against ~21 ms and ~170 ms for the leaders).
 - `tensorflow`, `tensorflow_io` — the TensorFlow target is removed entirely.
 
 `pedalboard` follows upstream PR #21 in intent, but not in code: that PR's loader ends
@@ -65,7 +66,7 @@ Dropped, with reasons recorded in the README so the removals are not silent:
 
 ### Seek benchmark membership
 
-`scipy` (non-memmap), `pydub` and `audioread` have no seek API and are excluded from the
+`scipy` (non-memmap) and `audioread` have no seek API and are excluded from the
 seek benchmark rather than measured as read-everything-then-slice. The README states the
 exclusion and the reason, so their absence is not mistaken for an oversight.
 

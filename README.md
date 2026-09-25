@@ -91,7 +91,6 @@ interpreter is already running (see `pabench/ffmpeg_env.py` and
 | [`librosa`](https://librosa.org/) | yes | yes | `offset=`/`duration=` |
 | [`scipy.io.wavfile`](https://docs.scipy.org/doc/scipy/reference/generated/scipy.io.wavfile.read.html) | yes | no | WAV only; no seek API |
 | `scipy.io.wavfile` (memmap) | yes | yes | WAV only; seek is a memmap slice |
-| [`pydub`](https://github.com/jiaaro/pydub) | yes | no | no native seek |
 | [`audioread`](https://github.com/beetbox/audioread) | yes | no | no native seek; always yields 16-bit PCM, so it cannot pass the exact gate against a float32 or 24-bit source |
 | [`pedalboard`](https://github.com/spotify/pedalboard) | yes | yes | `AudioFile.seek` + `.read` |
 | [`torchcodec`](https://github.com/pytorch/torchcodec) | yes | yes | `get_samples_played_in_range`; imports cleanly even when its native FFmpeg bindings can't load, so `pabench` smoke-tests a real decode before trusting it as available |
@@ -118,6 +117,21 @@ here:
 - **TensorFlow / `tensorflow_io`, and the plain-numpy target** — this
   benchmark is torch-only now; loading to a numpy array or a TensorFlow
   tensor is out of scope.
+- **`stempeg`** — it shells out to an `ffmpeg` subprocess per call, so every
+  cell measured process startup rather than decoding: a floor of roughly
+  90–250 ms in every format and duration, including a 1 s file. It is a
+  container-aware tool rather than a loader, and leaving it in only
+  compressed the log axis for everything else.
+- **`pydub`** — consistently at the back of the field, and by margins far
+  outside the noise floor: at 300 s stereo it needed 165.81 ms on float WAV
+  where the leaders needed ~21 ms, and 336.08 ms on MP3 against ~170 ms. It
+  also has no seek API, so it could never appear in the seek benchmark,
+  which is where this tool's interesting results are.
+
+Both `stempeg` and `pydub` were measured before being removed; the numbers
+above are from this benchmark, not from reputation. Adding either back is a
+matter of restoring its probe in `pabench/loaders.py` and its entry in the
+`libs` optional-dependency group.
 
 ## Correctness gate
 
@@ -163,80 +177,75 @@ distinct finding.
 
 ## Results
 
-Measured on an Apple M-series Mac (macOS 26.5, arm64), Python 3.12, median of 15 trials
-after one untimed warmup, warm page cache, stereo files. Full tables including mono and
-per-cell spread are in [`results/report.md`](results/report.md).
+> **These numbers are from one developer laptop that was in normal use during the run.**
+> Treat them as indicative. Re-run on your own hardware with `uv run pabench all`; the
+> report regenerates itself and the findings below state which effects reproduce.
+
+Apple M-series Mac (macOS 26.5, arm64), Python 3.12, median of 15 trials after one untimed
+warmup, warm page cache, stereo. Full tables including mono and per-cell spread are in
+[`results/report.md`](results/report.md).
 
 ![full decode](results/full.png)
 
 ![seek decode](results/seek.png)
 
-704 records over eleven libraries: 504 measured, 176 unsupported, 8 incorrect, 16 errored.
-Dispersion (IQR / median) has a median of 0.045 and a 90th percentile of 0.163, so **treat
-differences below roughly 10% as ties**. The interquartile range is used rather than
-max−min because the full range grows with the trial count, making runs with different
-`--repeat` values incomparable.
+480 records over ten libraries: 352 measured, 128 unsupported, **0 incorrect, 0 errored** —
+every library that ran decoded correctly. Dispersion (IQR / median) has a median of 0.063
+and a 90th percentile of 0.201, so **treat differences below roughly 10% as ties**.
 
 ### Full-file decode, stereo, 300 s, median ms (lower is better)
 
-| format | best | others |
-|---|---|---|
-| wav_pcm16 | **pedalboard 20.46** | scipy_mmap 20.55 · audiosample 24.18 · scipy 24.52 · pydub 27.69 · librosa 48.51 · soundfile 49.09 · torchcodec 50.31 · sphn 56.77 · audiolab 57.38 · audioread 75.30 |
-| wav_float | **scipy_mmap 17.15** | pedalboard 21.26 · librosa 21.63 · soundfile 21.76 · audiolab 23.15 · scipy 24.03 · torchcodec 34.96 · sphn 62.42 · pydub 165.81 |
-| flac | **sphn 119.33** | pedalboard 155.12 · soundfile 167.03 · librosa 167.57 · pydub 170.06 · audiolab 179.27 · torchcodec 188.90 · audioread 274.97 |
-| mp3 | **librosa 169.59** | soundfile 172.82 · audiolab 186.40 · sphn 200.96 · torchcodec 217.86 · pedalboard 286.26 · pydub 336.08 · audioread 381.93 |
+| format | ranking |
+|---|---|
+| wav_pcm16 | pedalboard 21.56 · scipy_mmap 22.97 · audiosample 23.95 · scipy 25.67 · librosa 49.59 · soundfile 52.07 · torchcodec 52.37 · audiolab 60.20 · audioread 76.94 · sphn 144.38 |
+| flac | pedalboard 158.40 · librosa 172.43 · soundfile 173.89 · audiolab 183.75 · torchcodec 196.09 · audioread 279.09 · sphn 323.73 |
+| mp3 | librosa 171.90 · soundfile 176.60 · audiolab 190.97 · torchcodec 221.85 · pedalboard 294.20 · audioread 387.96 · sphn 397.54 |
 
 ### Seek — decode 1 s from an offset, stereo, 300 s file, median ms
 
-| format | best | others |
-|---|---|---|
-| wav_pcm16 | **audiosample 0.20** | sphn 0.22 · pedalboard 0.23 · librosa 0.32 · soundfile 0.37 · audiolab 0.38 · scipy_mmap 0.73 · torchcodec 24.20 |
-| wav_float | **sphn 0.24** | pedalboard 0.27 · librosa 0.27 · soundfile 0.29 · audiolab 0.31 · torchcodec 0.64 · scipy_mmap 0.95 |
-| flac | **sphn 0.53** | pedalboard 0.86 · soundfile 0.90 · librosa 0.91 · audiolab 0.97 · torchcodec 2.52 |
-| mp3 | **sphn 0.98** | torchcodec 2.75 · librosa 3.55 · audiolab 3.68 · soundfile 3.75 · pedalboard 92.01 |
+| format | ranking |
+|---|---|
+| wav_pcm16 | audiosample 0.21 · pedalboard 0.22 · librosa 0.37 · soundfile 0.45 · sphn 0.50 · audiolab 0.57 · scipy_mmap 0.73 · **torchcodec 24.96** |
+| flac | librosa 0.87 · pedalboard 0.89 · soundfile 0.99 · audiolab 1.03 · sphn 1.30 · torchcodec 2.64 |
+| mp3 | sphn 2.10 · torchcodec 2.94 · audiolab 3.70 · librosa 3.73 · soundfile 3.80 · **pedalboard 94.51** |
 
 ### Findings
 
-**1. Seeking separates these libraries far more than full-file decoding does.** For full
-reads the good implementations sit within a factor of two or three. For excerpts the
-spread is two orders of magnitude. If you build training batches from excerpts, the seek
-table is the one that matters — and it is the one earlier versions of this benchmark
-never measured.
+**1. Seeking separates these libraries far more than full-file decoding.** For full reads
+the good implementations sit within a factor of two or three; for excerpts the spread is
+two orders of magnitude. If you assemble training batches from excerpts, the seek table is
+the one that matters, and it is the one earlier versions of this benchmark never measured.
 
-**2. `sphn` is the strongest seeker**, and by a wide margin on compressed formats: 0.98 ms
-to pull a 1 s excerpt from a 300 s MP3, against 2.75 ms for `torchcodec` and 92.01 ms for
-`pedalboard`. Its MP3 seek is essentially flat with duration (0.72 → 0.73 → 0.80 →
-0.98 ms at 1/10/60/300 s). It is also the fastest full-file FLAC reader here. It is *not*
-fast at reading whole WAV files (56–62 ms, near the back of the field), so it is a
-seeking-oriented library rather than a uniformly fast one.
+**2. `pedalboard` does not seek in MP3.** Its excerpt time grows with file duration —
+1.34, 3.88, 24.32, 94.51 ms at 1/10/60/300 s — the signature of decoding from the start and
+discarding. It seeks properly in WAV and FLAC (flat at ~0.22 and ~0.89 ms) and is the
+fastest full-file reader in two of three formats, so this is specifically an MP3 seek
+limitation. **Reproduced across three independent runs** (92.0, 94.5, 95.6 ms), while
+`sphn` and `torchcodec` return the same excerpt in 2–3 ms.
 
-**3. `pedalboard` does not seek in MP3.** Its excerpt time grows with file duration —
-1.30, 3.83, 23.96, 92.01 ms at 1/10/60/300 s — the signature of decoding from the start
-and discarding. It seeks properly in WAV and FLAC (flat at ~0.2 and ~0.9 ms), and it is
-the fastest full-file 16-bit WAV reader, so this is specifically an MP3 seek limitation.
+**3. `torchcodec` is far slower seeking uncompressed 16-bit WAV than compressed audio.**
+24.96 ms for a 1 s excerpt of a 300 s WAV, against 2.64 ms for FLAC and 2.94 ms for MP3 —
+roughly 10x slower on the *easier* format, and flat from 10 s onward (11.91, 24.93, 24.99,
+24.96 ms). **Reproduced across runs** (24.20, 24.96 ms). Worth knowing before standardising
+on 16-bit WAV for a torch pipeline.
 
-**4. `torchcodec` pays a large penalty on 16-bit PCM when seeking**: 24.20 ms on
-`wav_pcm16` against 0.64 ms on `wav_float` — a 38x gap for the same duration, channel
-count and container. The cost tracks the s16 conversion path rather than WAV itself.
-Worth knowing before standardising on 16-bit WAV for a torch pipeline.
+**4. `sphn`'s seek is strong on compressed formats but its full-file reads are slow here**
+(144 ms for a 300 s WAV, the slowest in the field). Its full-file figures were also the
+least stable across runs — the same FLAC cell measured 119 ms, 324 ms and ~170 ms on
+repeat — so **treat sphn's full-file numbers as unreliable on this machine** and re-measure
+before drawing conclusions. Its seek results were consistent.
 
-**5. `audioread` cannot round-trip float32 audio.** Its output differs from the reference
-by exactly 1.53e-05 = 1/65536 — the int16 quantisation step — on every float WAV file; it
-decodes at 16-bit precision internally. Those 8 results are reported `incorrect` and their
-timings withheld. No earlier version of this benchmark could detect this, because none
-verified output at all.
+**5. `librosa` tracks `soundfile` closely**, as expected — it delegates to it. It is not an
+independent decoder, and the two should not be read as corroborating each other.
 
-**6. `audiosample` handles integer-PCM WAV only** in this environment, and it is the
-fastest seeker there (0.20 ms). Float WAV, FLAC and MP3 route through its PyAV path, which
-raises against PyAV 18 (`Flags.FAST_SEEK`); those 16 results are reported `error` with that
-reason rather than hidden.
+**6. `scipy` is WAV-only.** Its memmap variant is competitive for full reads but a mediocre
+seeker (0.73 ms), since slicing a memmap still faults pages in through the OS.
 
-**7. `librosa` tracks `soundfile` closely** on WAV, as expected — it delegates to it. It is
-not an independent decoder.
-
-**8. `scipy` is WAV-only** and its memmap variant is the fastest full-file float WAV reader
-here, but it is a mediocre seeker (0.73–0.95 ms), since slicing a memmap still faults pages
-in through the OS.
+**7. Nothing failed the correctness gate in this run.** An earlier sweep that included
+float32 WAV caught `audioread` decoding at 16-bit precision internally (off by exactly
+1/65536) and `audiosample` raising on its PyAV path. Both are invisible to the current
+corpus, which is 16-bit only — the limitations still exist, the benchmark just no longer
+exercises them.
 
 ## Development
 

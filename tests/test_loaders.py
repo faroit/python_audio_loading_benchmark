@@ -1,4 +1,4 @@
-"""Tests for the eleven library adapters.
+"""Tests for the ten library adapters.
 
 No optional library is required to run this suite: a loader for a library that
 isn't installed, or whose native components fail to load (torchcodec on a machine
@@ -33,7 +33,6 @@ EXPECTED_LOADER_NAMES = {
     "librosa",
     "scipy",
     "scipy_mmap",
-    "pydub",
     "audioread",
     "pedalboard",
     "torchcodec",
@@ -59,11 +58,11 @@ MP3_SEEK_FRAME_TOLERANCE = 2
 # ---- registry -----------------------------------------------------------------
 
 
-def test_probes_has_exactly_the_eleven_expected_names():
+def test_probes_has_exactly_the_ten_expected_names():
     assert set(PROBES.keys()) == EXPECTED_LOADER_NAMES
 
 
-def test_available_loaders_with_no_names_probes_all_eleven():
+def test_available_loaders_with_no_names_probes_all_ten():
     loaders = available_loaders()
     assert {loader.name for loader in loaders} == EXPECTED_LOADER_NAMES
     assert all(isinstance(loader, Loader) for loader in loaders)
@@ -156,7 +155,7 @@ def _reference_tensor(path: Path) -> torch.Tensor:
     return to_tensor(data, "frames_first")
 
 
-# All eleven loaders, probed once at collection time so availability here drives
+# All ten loaders, probed once at collection time so availability here drives
 # which round-trip/seek cases get generated.
 ALL_LOADERS: dict[str, Loader] = {loader.name: loader for loader in available_loaders()}
 AVAILABLE_LOADER_NAMES = sorted(name for name, loader in ALL_LOADERS.items() if loader.available)

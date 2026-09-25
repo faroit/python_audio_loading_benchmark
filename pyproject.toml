@@ -17,7 +17,6 @@ pabench = "pabench.cli:console_main"
 libs = [
     "librosa",
     "scipy",
-    "pydub",
     "audioread",
     "pedalboard",
     "torchcodec",

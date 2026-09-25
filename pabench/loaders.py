@@ -276,37 +276,6 @@ def _probe_scipy_mmap() -> Loader:
     return _smoke_test(loader)
 
 
-def _probe_pydub() -> Loader:
-    name = "pydub"
-    layout: Layout = "frames_first"
-    formats = _WAV_FLAC_MP3
-    notes = "full-file only; pydub has no seek API"
-    try:
-        import pydub
-        from pydub import AudioSegment
-    except Exception as exc:
-        return _unavailable(name, layout, formats, notes, exc)
-
-    def full(path: Path) -> object:
-        song = AudioSegment.from_file(str(path))
-        samples = np.array(song.get_array_of_samples())
-        full_scale = float(2 ** (8 * song.sample_width - 1))
-        return samples.astype(np.float32).reshape(-1, song.channels) / full_scale
-
-    loader = Loader(
-        name=name,
-        layout=layout,
-        full=full,
-        seek=None,
-        version=_package_version(pydub, "pydub"),
-        available=True,
-        error=None,
-        formats=formats,
-        notes=notes,
-    )
-    return _smoke_test(loader)
-
-
 def _probe_audioread() -> Loader:
     name = "audioread"
     layout: Layout = "frames_first"
@@ -539,7 +508,6 @@ PROBES: dict[str, Callable[[], Loader]] = {
     "librosa": _probe_librosa,
     "scipy": _probe_scipy,
     "scipy_mmap": _probe_scipy_mmap,
-    "pydub": _probe_pydub,
     "audioread": _probe_audioread,
     "pedalboard": _probe_pedalboard,
     "torchcodec": _probe_torchcodec,

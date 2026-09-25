@@ -26,7 +26,7 @@ CHANNEL_COUNTS: tuple[int, ...] = (1, 2)
 @dataclass(frozen=True)
 class Fmt:
     container: str  # "wav" / "flac" / "mp3"
-    subtype: str  # "PCM_16" / "FLOAT" / "MP3"
+    subtype: str  # "PCM_16" / "MP3"
 
     @property
     def key(self) -> str:
@@ -38,7 +38,6 @@ class Fmt:
 
 FORMATS: tuple[Fmt, ...] = (
     Fmt("wav", "PCM_16"),
-    Fmt("wav", "FLOAT"),
     Fmt("flac", "PCM_16"),
     Fmt("mp3", "MP3"),
 )
