@@ -304,7 +304,7 @@ _MUTED_TEXT = "#52514e"
 _GRIDLINE = "#e1e0d9"
 
 
-def _library_styles(style_order: list[str]) -> tuple[dict, dict, dict]:
+def _library_styles(style_order: list[str]) -> tuple[dict, dict]:
     """Colour and dash maps keyed by library name, stable across every figure.
 
     Keying by name rather than by position matters: a figure that draws fewer
@@ -313,16 +313,16 @@ def _library_styles(style_order: list[str]) -> tuple[dict, dict, dict]:
     pattern carries the difference, so identity never rests on a ninth colour
     that would sit too close to an existing one.
     """
-    colors, dashes, markers = {}, {}, {}
+    # seaborn's "colorblind" palette, sized to the library count so every library gets
+    # its own hue and no line needs a dash to disambiguate a reused colour. Lines stay
+    # solid; marker shape varies so identity survives a greyscale print.
+    hues = sns.color_palette("colorblind", max(len(style_order), 1)).as_hex()
+    markers_cycle = ("o", "s", "^", "D", "v", "P", "X", "*", "<", ">")
+    colors, markers = {}, {}
     for index, name in enumerate(style_order):
-        wrapped = index // len(_PALETTE)
-        colors[name] = _PALETTE[index % len(_PALETTE)]
-        # A wrapped entry reuses a hue, so it carries two further channels rather than
-        # one: a long dash and a different marker. Colour plus a faint dash alone is
-        # not enough to tell two same-coloured lines apart in a dense panel.
-        dashes[name] = "" if wrapped == 0 else (6, 2)
-        markers[name] = ("o", "s", "^", "D")[wrapped % 4]
-    return colors, dashes, markers
+        colors[name] = hues[index % len(hues)]
+        markers[name] = markers_cycle[index % len(markers_cycle)]
+    return colors, markers
 
 
 def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[str]) -> Path:
@@ -357,10 +357,13 @@ def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[s
     # Only libraries actually drawn reach the legend; a library that cannot seek is
     # an unsupported operation, not a line someone should hunt for.
     present = [name for name in style_order if name in set(frame["library"])]
-    colors, dashes, markers = _library_styles(style_order)
+    colors, markers = _library_styles(style_order)
     formats = [f for f in sorted({*frame["format"]}, key=_format_sort_key)]
 
-    sns.set_theme(style="whitegrid", rc={"grid.color": _GRIDLINE, "grid.linewidth": 0.6})
+    sns.set_theme(
+        style="whitegrid",
+        rc={"grid.color": _GRIDLINE, "grid.linewidth": 0.6},
+    )
     grid = sns.relplot(
         data=frame,
         x="duration",
@@ -370,8 +373,8 @@ def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[s
         hue_order=present,
         style_order=present,
         palette={name: colors[name] for name in present},
-        dashes={name: dashes[name] for name in present},
         markers={name: markers[name] for name in present},
+        dashes=False,
         col="format",
         col_order=formats,
         row="channels",
@@ -379,11 +382,18 @@ def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[s
         kind="line",
         markersize=5,
         linewidth=1.8,
-        height=2.9,
-        aspect=1.25,
+        height=3.1,
+        aspect=1.3,
         facet_kws={"sharey": "row", "legend_out": True},
     )
     grid.set(xscale="log", yscale="log")
+    # Minor gridlines on both log axes: on a log-log plot the decade lines alone leave
+    # most of the plane unreferenced, and reading a value between them is guesswork.
+    for ax in grid.axes.flat:
+        ax.grid(True, which="major", color=_GRIDLINE, linewidth=0.7)
+        ax.grid(True, which="minor", color=_GRIDLINE, linewidth=0.4, alpha=0.6)
+        ax.set_axisbelow(True)
+    grid.figure.subplots_adjust(wspace=0.22, hspace=0.28)
     grid.set_axis_labels("duration (s)", "median (ms)")
     grid.set_titles(row_template="{row_name}", col_template="{col_name}")
     grid.figure.suptitle(
