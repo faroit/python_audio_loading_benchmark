@@ -351,11 +351,36 @@ def test_run_refuses_when_a_library_is_missing(tmp_path, monkeypatch, capsys):
     """A report whose cells are mostly 'unavailable' is not a benchmark result."""
     _break_one_probe(monkeypatch)
     corpus = tmp_path / "corpus"
-    main(["gen", "--corpus-dir", str(corpus), "--durations", "1", "--channels", "1",
-          "--formats", "wav_pcm16"])
-    code = main(["run", "--corpus-dir", str(corpus), "--out", str(tmp_path / "r.json"),
-                 "--repeat", "2", "--durations", "1", "--channels", "1",
-                 "--formats", "wav_pcm16"])
+    main(
+        [
+            "gen",
+            "--corpus-dir",
+            str(corpus),
+            "--durations",
+            "1",
+            "--channels",
+            "1",
+            "--formats",
+            "wav_pcm16",
+        ]
+    )
+    code = main(
+        [
+            "run",
+            "--corpus-dir",
+            str(corpus),
+            "--out",
+            str(tmp_path / "r.json"),
+            "--repeat",
+            "2",
+            "--durations",
+            "1",
+            "--channels",
+            "1",
+            "--formats",
+            "wav_pcm16",
+        ]
+    )
     err = capsys.readouterr().err
     assert code == 2
     assert "pedalboard" in err
@@ -367,12 +392,38 @@ def test_run_refuses_when_a_library_is_missing(tmp_path, monkeypatch, capsys):
 def test_allow_missing_proceeds_and_records_the_gap(tmp_path, monkeypatch):
     _break_one_probe(monkeypatch)
     corpus = tmp_path / "corpus"
-    main(["gen", "--corpus-dir", str(corpus), "--durations", "1", "--channels", "1",
-          "--formats", "wav_pcm16"])
+    main(
+        [
+            "gen",
+            "--corpus-dir",
+            str(corpus),
+            "--durations",
+            "1",
+            "--channels",
+            "1",
+            "--formats",
+            "wav_pcm16",
+        ]
+    )
     out = tmp_path / "r.json"
-    code = main(["run", "--corpus-dir", str(corpus), "--out", str(out), "--repeat", "2",
-                 "--allow-missing", "--durations", "1", "--channels", "1",
-                 "--formats", "wav_pcm16"])
+    code = main(
+        [
+            "run",
+            "--corpus-dir",
+            str(corpus),
+            "--out",
+            str(out),
+            "--repeat",
+            "2",
+            "--allow-missing",
+            "--durations",
+            "1",
+            "--channels",
+            "1",
+            "--formats",
+            "wav_pcm16",
+        ]
+    )
     assert code == 0
     records = json.loads(out.read_text())["records"]
     assert any(r["library"] == "pedalboard" and r["status"] == "unavailable" for r in records)
