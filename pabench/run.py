@@ -1,9 +1,10 @@
 """The run loop: loaders + a corpus -> a results dict, and its JSON serialisation.
 
 For every (library, file, bench) triple this produces exactly one `Record`. A
-library that isn't available, doesn't claim a file's container, or has no seek
-implementation never touches the decoder or the correctness gate for that
-triple -- it's recorded as `unavailable`/`unsupported` and the run moves on. A
+library that isn't available, doesn't claim a file's container, has no seek
+implementation, or has no `from_bytes` implementation never touches the decoder
+or the correctness gate for that triple -- it's recorded as
+`unavailable`/`unsupported` and the run moves on. A
 library that is exercised is verified once against a `soundfile` reference
 before it is timed; a verification failure withholds timings (`incorrect`), and
 an exception anywhere in decode or verification is caught and recorded
@@ -37,7 +38,7 @@ from pabench.loaders import Loader
 from pabench.timing import DEFAULT_REPEAT, measure, realtime_factor
 from pabench.verify import compare, compare_seek
 
-Bench = Literal["full", "seek"]
+Bench = Literal["full", "seek", "bytes"]
 Status = Literal["ok", "unavailable", "incorrect", "error", "unsupported"]
 
 SEEK_SECONDS = 1.0
@@ -176,6 +177,14 @@ def _decode_fn(
 ) -> Callable[[], object]:
     if bench == "full":
         return lambda: to_tensor(loader.full(path), loader.layout)
+    if bench == "bytes":
+        # Read once, here, before the decode closure is ever called (including the
+        # correctness check below and every warmup/timed trial in `measure`): the
+        # "bytes" bench measures decode-from-memory, not file reading, so the file
+        # read itself must never fall inside the timed region (see
+        # docs/refactor-design.md).
+        raw_bytes = path.read_bytes()
+        return lambda: to_tensor(loader.from_bytes(raw_bytes), loader.layout)
     return lambda: to_tensor(loader.seek(path, start_seconds, SEEK_SECONDS), loader.layout)
 
 
@@ -237,6 +246,15 @@ def _build_record(
             reason=f"{loader.name} has no seek implementation",
         )
 
+    if bench == "bytes" and loader.from_bytes is None:
+        return _unmeasured(
+            library=loader.name,
+            spec=spec,
+            bench=bench,
+            status="unsupported",
+            reason=f"{loader.name} has no from_bytes implementation",
+        )
+
     start_seconds = seek_offset(spec) if bench == "seek" else 0.0
     decode = _decode_fn(loader, path, bench, start_seconds)
 
@@ -287,7 +305,9 @@ def _build_record(
             gate=verify_result.gate,
         )
 
-    audio_seconds = float(spec.duration_s) if bench == "full" else SEEK_SECONDS
+    # "bytes" is a full-file decode differing only in where the input comes from, so
+    # it is measured against the whole file's duration exactly like "full".
+    audio_seconds = float(spec.duration_s) if bench in ("full", "bytes") else SEEK_SECONDS
     return Record(
         library=loader.name,
         file=spec.filename,

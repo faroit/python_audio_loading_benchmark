@@ -9,6 +9,7 @@ optional libraries happen to be installed.
 from __future__ import annotations
 
 import dataclasses
+import io
 from pathlib import Path
 
 import pytest
@@ -47,12 +48,18 @@ def _soundfile_seek(path: Path, start_seconds: float, duration_seconds: float) -
     return data
 
 
-def _correct_loader(name: str = "correct", seek: bool = True) -> Loader:
+def _soundfile_from_bytes(raw: bytes) -> object:
+    data, _ = sf.read(io.BytesIO(raw), dtype="float32", always_2d=True)
+    return data
+
+
+def _correct_loader(name: str = "correct", seek: bool = True, from_bytes: bool = False) -> Loader:
     return Loader(
         name=name,
         layout="frames_first",
         full=_soundfile_full,
         seek=_soundfile_seek if seek else None,
+        from_bytes=_soundfile_from_bytes if from_bytes else None,
         version="1.0",
         available=True,
         error=None,
@@ -219,6 +226,76 @@ def test_loader_not_claiming_the_container_is_unsupported(corpus_dir):
     (record,) = _records_for(results, "flac_only")
     assert record["status"] == "unsupported"
     assert record["median_ms"] is None
+
+
+# ---- bytes bench --------------------------------------------------------------
+
+
+def test_loader_without_from_bytes_is_unsupported_for_bytes_but_unaffected_for_others(corpus_dir):
+    results = run(
+        corpus_dir,
+        [_correct_loader()],  # from_bytes=False (the default): no from_bytes at all
+        specs=(_spec(10, 2),),
+        benches=("full", "seek", "bytes"),
+        repeat=1,
+    )
+    records = {r["bench"]: r for r in _records_for(results, "correct")}
+    assert records["bytes"]["status"] == "unsupported"
+    assert records["bytes"]["reason"] == "correct has no from_bytes implementation"
+    assert records["bytes"]["median_ms"] is None
+    assert records["full"]["status"] == "ok"
+    assert records["seek"]["status"] == "ok"
+
+
+def test_loader_with_from_bytes_yields_ok_for_the_bytes_bench(corpus_dir):
+    results = run(
+        corpus_dir,
+        [_correct_loader(from_bytes=True)],
+        specs=(_spec(10, 2),),
+        benches=("bytes",),
+        repeat=2,
+    )
+    (record,) = _records_for(results, "correct")
+    assert record["status"] == "ok"
+    assert record["median_ms"] is not None
+    assert record["realtime_factor"] is not None
+    assert record["gate"] == "exact"
+    assert record["reason"] is None
+
+
+def test_bytes_bench_reads_the_file_once_and_passes_bytes_not_a_path(corpus_dir, monkeypatch):
+    """The file must be read into memory once, outside the timed region.
+
+    Asserts both halves of that requirement: the loader's callable is handed a
+    `bytes` object (never a `Path`), and the file is read from disk exactly once
+    regardless of how many timed trials run.
+    """
+    received_types: list[type] = []
+
+    def tracking_from_bytes(raw: object) -> object:
+        received_types.append(type(raw))
+        return _soundfile_from_bytes(raw)
+
+    loader = _correct_loader(from_bytes=True)
+    loader = dataclasses.replace(loader, from_bytes=tracking_from_bytes)
+
+    read_calls = {"n": 0}
+    original_read_bytes = Path.read_bytes
+
+    def counting_read_bytes(self: Path, *args: object, **kwargs: object) -> bytes:
+        read_calls["n"] += 1
+        return original_read_bytes(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_bytes", counting_read_bytes)
+
+    results = run(corpus_dir, [loader], specs=(_spec(10, 2),), benches=("bytes",), repeat=3)
+    (record,) = _records_for(results, "correct")
+
+    assert record["status"] == "ok"
+    assert received_types and all(t is bytes for t in received_types)
+    # 1 correctness check + 1 warmup + 3 timed trials call the decode closure 5
+    # times, but the file itself is read from disk exactly once.
+    assert read_calls["n"] == 1
 
 
 def test_empty_specs_do_not_raise(corpus_dir):

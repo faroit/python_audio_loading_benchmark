@@ -8,15 +8,25 @@ rather than reported as working on the strength of a successful import alone --
 `torchcodec` is the motivating case: it imports cleanly and only fails once it tries
 to load its native FFmpeg bindings.
 
-Every `full`/`seek` callable returns whatever its library natively hands back --
-numpy array, torch tensor, or anything `pabench.canonical.to_tensor` accepts.
-Converting that to the canonical float32 (channels, frames) tensor, and doing so
-inside the timed region, is the caller's job (see `docs/refactor-design.md`), not
-this module's.
+Every `full`/`seek`/`from_bytes` callable returns whatever its library natively
+hands back -- numpy array, torch tensor, or anything `pabench.canonical.to_tensor`
+accepts. Converting that to the canonical float32 (channels, frames) tensor, and
+doing so inside the timed region, is the caller's job (see
+`docs/refactor-design.md`), not this module's.
+
+`from_bytes` decodes a whole file from an in-memory buffer (`bytes` in, same
+layout as `full` out) rather than a path -- the "bytes" benchmark. `None` means
+the library cannot do it at all (no in-memory decode API); that library is
+reported as `unsupported` for that bench by `pabench.run`, the same mechanism a
+seek-less loader already gets for the seek bench. `from_bytes` is not exercised
+by `_smoke_test` below, for the same reason `seek` isn't: it is optional per
+loader and its own correctness is checked once real files exist, by the
+per-loader round-trip tests in `tests/test_loaders.py`.
 """
 
 from __future__ import annotations
 
+import io
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -48,6 +58,10 @@ class Loader:
     error: str | None
     formats: frozenset[str]
     notes: str | None
+    #: Decode a whole file from an in-memory buffer (the "bytes" benchmark). `None`
+    #: means the library has no in-memory decode API; defaults to `None` so existing
+    #: (and test-stub) loaders that don't care about this bench need not name it.
+    from_bytes: Callable[[bytes], object] | None = None
 
 
 def _package_version(module: object, dist_name: str) -> str | None:
@@ -154,6 +168,10 @@ def _probe_soundfile() -> Loader:
         )
         return data
 
+    def from_bytes(raw: bytes) -> object:
+        data, _ = libsndfile.read(io.BytesIO(raw), dtype="float32", always_2d=True)
+        return data
+
     loader = Loader(
         name=name,
         layout=layout,
@@ -164,6 +182,7 @@ def _probe_soundfile() -> Loader:
         error=None,
         formats=formats,
         notes=notes,
+        from_bytes=from_bytes,
     )
     return _smoke_test(loader)
 
@@ -192,6 +211,10 @@ def _probe_librosa() -> Loader:
         )
         return data
 
+    def from_bytes(raw: bytes) -> object:
+        data, _ = librosa.load(io.BytesIO(raw), sr=None, mono=False)
+        return data
+
     loader = Loader(
         name=name,
         layout=layout,
@@ -202,6 +225,7 @@ def _probe_librosa() -> Loader:
         error=None,
         formats=formats,
         notes=notes,
+        from_bytes=from_bytes,
     )
     return _smoke_test(loader)
 
@@ -221,6 +245,10 @@ def _probe_scipy() -> Loader:
         _, raw = wavfile.read(str(path))
         return _scale_to_float32(raw)
 
+    def from_bytes(raw: bytes) -> object:
+        _, data = wavfile.read(io.BytesIO(raw))
+        return _scale_to_float32(data)
+
     loader = Loader(
         name=name,
         layout=layout,
@@ -231,6 +259,7 @@ def _probe_scipy() -> Loader:
         error=None,
         formats=formats,
         notes=notes,
+        from_bytes=from_bytes,
     )
     return _smoke_test(loader)
 
@@ -334,6 +363,10 @@ def _probe_pedalboard() -> Loader:
             f.seek(start_frame)
             return f.read(num_frames)
 
+    def from_bytes(raw: bytes) -> object:
+        with AudioFile(io.BytesIO(raw)) as f:
+            return f.read(f.frames)
+
     loader = Loader(
         name=name,
         layout=layout,
@@ -344,6 +377,7 @@ def _probe_pedalboard() -> Loader:
         error=None,
         formats=formats,
         notes=notes,
+        from_bytes=from_bytes,
     )
     return _smoke_test(loader)
 
@@ -373,6 +407,11 @@ def _probe_torchcodec() -> Loader:
         )
         return result.data
 
+    def from_bytes(raw: bytes) -> object:
+        # Takes the raw `bytes` directly, not a `BytesIO` (see
+        # docs/refactor-design.md's capability matrix).
+        return AudioDecoder(raw).get_all_samples().data
+
     loader = Loader(
         name=name,
         layout=layout,
@@ -383,6 +422,7 @@ def _probe_torchcodec() -> Loader:
         error=None,
         formats=formats,
         notes=notes,
+        from_bytes=from_bytes,
     )
     return _smoke_test(loader)
 
@@ -411,6 +451,10 @@ def _probe_audiolab() -> Loader:
         )
         return data
 
+    def from_bytes(raw: bytes) -> object:
+        data, _ = load_audio(io.BytesIO(raw), dtype=np.float32)
+        return data
+
     loader = Loader(
         name=name,
         layout=layout,
@@ -421,6 +465,7 @@ def _probe_audiolab() -> Loader:
         error=None,
         formats=formats,
         notes=notes,
+        from_bytes=from_bytes,
     )
     return _smoke_test(loader)
 
@@ -489,6 +534,11 @@ def _probe_audiosample() -> Loader:
         excerpt = sample[start_seconds : start_seconds + duration_seconds]
         return excerpt.as_numpy()
 
+    def from_bytes(raw: bytes) -> object:
+        # Takes raw `bytes` directly; still WAV-only, same PyAV limitation as `full`
+        # (see docs/refactor-design.md's capability matrix).
+        return AudioSample(raw).as_numpy()
+
     loader = Loader(
         name=name,
         layout=layout,
@@ -499,6 +549,7 @@ def _probe_audiosample() -> Loader:
         error=None,
         formats=formats,
         notes=notes,
+        from_bytes=from_bytes,
     )
     return _smoke_test(loader)
 

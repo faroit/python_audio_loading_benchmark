@@ -38,7 +38,9 @@ from pabench.timing import DEFAULT_REPEAT
 #: another disk does not have to be named again on every subcommand.
 CORPUS_DIR_ENV = "PABENCH_CORPUS_DIR"
 
-_BENCH_CHOICES = ("full", "seek", "both")
+#: "both" is kept as a backwards-compatible alias for "full,seek" (it predates the
+#: "bytes" bench); "all" is the new alias for every bench, "full,seek,bytes".
+_BENCH_CHOICES = ("full", "seek", "bytes", "both", "all")
 _FORMAT_CHOICES = tuple(fmt.key for fmt in FORMATS)
 
 
@@ -96,7 +98,11 @@ def _select_specs(args: argparse.Namespace) -> tuple[CorpusSpec, ...]:
 
 
 def _bench_tuple(bench: str) -> tuple[str, ...]:
-    return ("full", "seek") if bench == "both" else (bench,)
+    if bench == "both":
+        return ("full", "seek")
+    if bench == "all":
+        return ("full", "seek", "bytes")
+    return (bench,)
 
 
 def _progress(library: str, filename: str) -> None:
@@ -204,7 +210,7 @@ def _cmd_report(args: argparse.Namespace) -> int:
 
 
 def _cmd_all(args: argparse.Namespace) -> int:
-    """Generate only the corpus files that are missing, run both benches, report."""
+    """Generate only the corpus files that are missing, run all three benches, report."""
     specs = _select_specs(args)
     corpus_dir = Path(args.corpus_dir)
     missing = tuple(spec for spec in specs if not (corpus_dir / spec.filename).exists())
@@ -222,7 +228,7 @@ def _cmd_all(args: argparse.Namespace) -> int:
             loaders,
             specs=specs,
             repeat=args.repeat,
-            benches=("full", "seek"),
+            benches=("full", "seek", "bytes"),
             progress=_progress,
         )
     except FileNotFoundError as exc:
@@ -279,7 +285,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     all_parser = subparsers.add_parser(
         "all",
-        help="generate what's missing, run both benchmarks (all libraries), write the report",
+        help="generate what's missing, run all three benchmarks (all libraries), write the report",
     )
     _add_filter_args(all_parser)
     all_parser.add_argument("--repeat", type=int, default=DEFAULT_REPEAT)

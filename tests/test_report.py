@@ -3,7 +3,7 @@
 The fixture results dict below is hand-built (not produced by `pabench.run.run`)
 so these tests exercise `render_markdown`/`write_plots` in isolation, with a
 deliberate mix of `ok`, `unavailable`, `incorrect`, and `unsupported` records
-across two benches and three formats -- exactly the mix a real run produces.
+across three benches and three formats -- exactly the mix a real run produces.
 
 `soundfile`, `flaky`, `wavonly`, and `ghost` are fixture library names, not the
 the real adapters; nothing here imports `pabench.loaders`.
@@ -33,7 +33,8 @@ def _ok(library, fmt, bench, duration_s, channels, median_ms, min_ms, max_ms, ga
         "median_ms": median_ms,
         "min_ms": min_ms,
         "max_ms": max_ms,
-        "realtime_factor": (duration_s if bench == "full" else 1.0) / (median_ms / 1000.0),
+        "realtime_factor": (duration_s if bench in ("full", "bytes") else 1.0)
+        / (median_ms / 1000.0),
         "gate": gate,
         "reason": None,
     }
@@ -180,6 +181,37 @@ RECORDS = [
         status="unavailable",
         reason="ImportError: no module named ghost",
     ),
+    # bytes bench, appended (not interleaved above) so existing positional indices
+    # into RECORDS elsewhere in this file are unaffected: soundfile supports it,
+    # flaky and wavonly don't, ghost is unavailable.
+    _ok("soundfile", WAV, "bytes", 1, 1, median_ms=1.80, min_ms=1.70, max_ms=1.95),
+    _withheld(
+        "flaky",
+        WAV,
+        "bytes",
+        1,
+        1,
+        status="unsupported",
+        reason="flaky has no from_bytes implementation",
+    ),
+    _withheld(
+        "wavonly",
+        WAV,
+        "bytes",
+        1,
+        1,
+        status="unsupported",
+        reason="wavonly has no from_bytes implementation",
+    ),
+    _withheld(
+        "ghost",
+        WAV,
+        "bytes",
+        1,
+        1,
+        status="unavailable",
+        reason="ImportError: no module named ghost",
+    ),
 ]
 
 RESULTS = {"platform": PLATFORM, "records": RECORDS}
@@ -232,6 +264,21 @@ def test_render_markdown_library_table_lists_every_library_with_seek_support():
     assert by_library["ghost"]["Error"] == "ImportError: no module named ghost"
 
 
+def test_render_markdown_library_table_lists_every_library_with_bytes_support():
+    markdown = render_markdown(RESULTS)
+    rows = _table_rows(markdown, "## Libraries")
+    header, data_rows = rows[0], rows[2:]
+    by_library = {}
+    for row in data_rows:
+        as_dict = _row_as_dict(header, row)
+        by_library[as_dict["Library"]] = as_dict
+
+    assert by_library["soundfile"]["Bytes"] == "yes"
+    assert by_library["flaky"]["Bytes"] == "no"
+    assert by_library["wavonly"]["Bytes"] == "no"
+    assert by_library["ghost"]["Bytes"] == "n/a"
+
+
 def test_cross_table_cell_is_median_with_spread_not_a_bare_median():
     markdown = render_markdown(RESULTS)
     rows = _table_rows(markdown, f"## {WAV} / full")
@@ -279,6 +326,18 @@ def test_seek_table_only_has_the_one_measured_duration_channels_combo():
     assert as_dict["soundfile"] == "1.20 ms [1.10–1.30]"
     assert as_dict["flaky"] == "unsupported"
     assert as_dict["wavonly"] == "1.10 ms [1.05–1.18]"
+    assert as_dict["ghost"] == "unavailable"
+
+
+def test_bytes_cross_table_renders_without_special_casing():
+    markdown = render_markdown(RESULTS)
+    rows = _table_rows(markdown, f"## {WAV} / bytes")
+    header, data_rows = rows[0], rows[2:]
+    (row,) = data_rows
+    as_dict = _row_as_dict(header, row)
+    assert as_dict["soundfile"] == "1.80 ms [1.70–1.95]"
+    assert as_dict["flaky"] == "unsupported"
+    assert as_dict["wavonly"] == "unsupported"
     assert as_dict["ghost"] == "unavailable"
 
 
@@ -332,10 +391,17 @@ def test_measurement_noise_section_handles_no_ok_records():
 
 def test_write_plots_creates_non_empty_files_for_every_bench(tmp_path: Path):
     paths = write_plots(RESULTS, tmp_path)
-    assert len(paths) == 2  # "full" and "seek" both appear in RECORDS
+    assert len(paths) == 3  # "full", "seek" and "bytes" all appear in RECORDS
     for path in paths:
         assert path.exists()
         assert path.stat().st_size > 0
+
+
+def test_write_plots_creates_a_bytes_png(tmp_path: Path):
+    write_plots(RESULTS, tmp_path)
+    bytes_png = tmp_path / "bytes.png"
+    assert bytes_png.exists()
+    assert bytes_png.stat().st_size > 0
 
 
 def test_write_plots_does_not_raise_on_none_timings(tmp_path: Path):

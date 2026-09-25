@@ -29,7 +29,7 @@ from pabench.corpus import FORMATS
 Records = list[dict[str, Any]]
 
 _FORMAT_ORDER = {fmt.key: index for index, fmt in enumerate(FORMATS)}
-_BENCH_ORDER = {"full": 0, "seek": 1}
+_BENCH_ORDER = {"full": 0, "seek": 1, "bytes": 2}
 
 _EN_DASH = "–"
 
@@ -95,23 +95,35 @@ def _platform_table(platform: dict) -> str:
     return _markdown_table(["Field", "Value"], rows)
 
 
-def _seek_support(library: str, records: Records) -> str:
-    """Whether `library` has a working seek implementation, inferred from its records.
+def _capability_support(library: str, bench: str, records: Records, no_support_reason: str) -> str:
+    """Whether `library` has a working `bench` implementation, inferred from its records.
 
-    "no" if any seek-bench record for this library carries the fixed reason
-    `pabench.run` gives a seek-less loader; "n/a" if the library is unavailable, or
-    was never actually attempted for seek (no supported container in this corpus);
-    "yes" otherwise (at least one seek attempt was made and didn't hit that reason).
+    "no" if any `bench` record for this library carries the fixed reason
+    `pabench.run` gives a loader lacking that capability; "n/a" if the library is
+    unavailable, or was never actually attempted for `bench` (no supported container
+    in this corpus); "yes" otherwise (at least one attempt was made and didn't hit
+    that reason).
     """
-    seek_records = [r for r in records if r["library"] == library and r["bench"] == "seek"]
-    if not seek_records:
+    bench_records = [r for r in records if r["library"] == library and r["bench"] == bench]
+    if not bench_records:
         return "n/a"
-    no_seek_reason = f"{library} has no seek implementation"
-    if any(r["reason"] == no_seek_reason for r in seek_records):
+    if any(r["reason"] == no_support_reason for r in bench_records):
         return "no"
-    if all(r["status"] in ("unavailable", "unsupported") for r in seek_records):
+    if all(r["status"] in ("unavailable", "unsupported") for r in bench_records):
         return "n/a"
     return "yes"
+
+
+def _seek_support(library: str, records: Records) -> str:
+    """Whether `library` has a working seek implementation, inferred from its records."""
+    return _capability_support(library, "seek", records, f"{library} has no seek implementation")
+
+
+def _bytes_support(library: str, records: Records) -> str:
+    """Whether `library` has a working `from_bytes` implementation, inferred from its records."""
+    return _capability_support(
+        library, "bytes", records, f"{library} has no from_bytes implementation"
+    )
 
 
 def _library_table(results: dict) -> str:
@@ -126,11 +138,14 @@ def _library_table(results: dict) -> str:
                 str(info.get("version") or "-"),
                 "yes" if info.get("available") else "no",
                 _seek_support(name, records),
+                _bytes_support(name, records),
                 str(info.get("notes") or "-"),
                 str(info.get("error") or "-"),
             ]
         )
-    return _markdown_table(["Library", "Version", "Available", "Seek", "Notes", "Error"], rows)
+    return _markdown_table(
+        ["Library", "Version", "Available", "Seek", "Bytes", "Notes", "Error"], rows
+    )
 
 
 def _cross_table(format_key: str, bench: str, records: Records, libraries: list[str]) -> str:

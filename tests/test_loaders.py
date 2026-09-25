@@ -174,6 +174,11 @@ CONTAINER_CASES = _container_cases()
 SEEK_CASES = [
     (name, container) for name, container in CONTAINER_CASES if ALL_LOADERS[name].seek is not None
 ]
+BYTES_CASES = [
+    (name, container)
+    for name, container in CONTAINER_CASES
+    if ALL_LOADERS[name].from_bytes is not None
+]
 
 
 @pytest.mark.parametrize(
@@ -221,3 +226,31 @@ def test_seek_returns_expected_frame_count(loader_name, container, corpus_dir):
     assert abs(actual_frames - expected_frames) <= tolerance, (
         f"{loader_name}/{container}: expected ~{expected_frames} frames, got {actual_frames}"
     )
+
+
+@pytest.mark.parametrize(
+    "loader_name,container",
+    BYTES_CASES,
+    ids=[f"{name}-{container}" for name, container in BYTES_CASES],
+)
+def test_from_bytes_decode_matches_reference_under_gate(loader_name, container, corpus_dir):
+    """`from_bytes` must decode a raw buffer to the same result as `full` decodes a path.
+
+    Loaders that don't support in-memory decode (`from_bytes is None`) are excluded
+    from `BYTES_CASES` entirely -- they are reported as `unsupported` for the bytes
+    bench by `pabench.run`, not skipped here.
+    """
+    if container == "mp3" and not ffmpeg_available():
+        pytest.skip("ffmpeg not available to build the mp3 fixture")
+
+    loader = ALL_LOADERS[loader_name]
+    fmt = REPRESENTATIVE_FMT[container]
+    spec = _spec_for(fmt)
+    path = corpus_dir / spec.filename
+    raw = path.read_bytes()
+
+    reference = _reference_tensor(path)
+    candidate = to_tensor(loader.from_bytes(raw), loader.layout)
+
+    result = compare(reference, candidate, fmt)
+    assert result.ok, result.reason

@@ -78,6 +78,87 @@ def test_run_writes_results_for_only_the_requested_library(tmp_path):
     assert record["median_ms"] is not None
 
 
+def test_run_accepts_bench_bytes(tmp_path):
+    corpus_dir = tmp_path / "corpus"
+    results_path = tmp_path / "results.json"
+    assert _gen(corpus_dir) == 0
+
+    rc = main(
+        [
+            "run",
+            "--corpus-dir",
+            str(corpus_dir),
+            *_TINY_FILTERS,
+            "--library",
+            "soundfile",
+            "--bench",
+            "bytes",
+            "--repeat",
+            "1",
+            "--out",
+            str(results_path),
+        ]
+    )
+    assert rc == 0
+    data = json.loads(results_path.read_text())
+    assert {r["bench"] for r in data["records"]} == {"bytes"}
+    (record,) = data["records"]
+    assert record["status"] == "ok"
+    assert record["median_ms"] is not None
+
+
+def test_bench_both_is_still_accepted_as_the_full_plus_seek_alias(tmp_path):
+    corpus_dir = tmp_path / "corpus"
+    results_path = tmp_path / "results.json"
+    assert _gen(corpus_dir) == 0
+
+    rc = main(
+        [
+            "run",
+            "--corpus-dir",
+            str(corpus_dir),
+            *_TINY_FILTERS,
+            "--library",
+            "soundfile",
+            "--bench",
+            "both",
+            "--repeat",
+            "1",
+            "--out",
+            str(results_path),
+        ]
+    )
+    assert rc == 0
+    data = json.loads(results_path.read_text())
+    assert {r["bench"] for r in data["records"]} == {"full", "seek"}
+
+
+def test_bench_all_runs_full_seek_and_bytes(tmp_path):
+    corpus_dir = tmp_path / "corpus"
+    results_path = tmp_path / "results.json"
+    assert _gen(corpus_dir) == 0
+
+    rc = main(
+        [
+            "run",
+            "--corpus-dir",
+            str(corpus_dir),
+            *_TINY_FILTERS,
+            "--library",
+            "soundfile",
+            "--bench",
+            "all",
+            "--repeat",
+            "1",
+            "--out",
+            str(results_path),
+        ]
+    )
+    assert rc == 0
+    data = json.loads(results_path.read_text())
+    assert {r["bench"] for r in data["records"]} == {"full", "seek", "bytes"}
+
+
 def test_report_renders_markdown_and_plots_from_an_existing_results_file(tmp_path):
     corpus_dir = tmp_path / "corpus"
     results_path = tmp_path / "results.json"
@@ -168,10 +249,12 @@ def test_all_generates_runs_and_reports_end_to_end_on_a_tiny_corpus(tmp_path):
     assert (out_path.parent / "report.md").exists()
     assert (out_path.parent / "full.png").exists()
     assert (out_path.parent / "seek.png").exists()
+    assert (out_path.parent / "bytes.png").exists()
 
     data = json.loads(out_path.read_text())
     # every registered library was probed, whether or not it ended up available
     assert {r["library"] for r in data["records"]} == set(PROBES)
+    assert {r["bench"] for r in data["records"]} == {"full", "seek", "bytes"}
 
 
 def test_all_does_not_regenerate_a_file_that_already_exists(tmp_path):
