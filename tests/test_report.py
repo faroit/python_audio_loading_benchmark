@@ -21,7 +21,18 @@ FLAC = "flac_pcm16"
 MP3 = "mp3"
 
 
-def _ok(library, fmt, bench, duration_s, channels, median_ms, min_ms, max_ms, gate="exact"):
+def _ok(
+    library,
+    fmt,
+    bench,
+    duration_s,
+    channels,
+    median_ms,
+    min_ms,
+    max_ms,
+    gate="exact",
+    seek_seconds=None,
+):
     return {
         "library": library,
         "file": f"{duration_s}s_{channels}ch_{fmt}.{'mp3' if fmt == MP3 else fmt.split('_')[0]}",
@@ -37,10 +48,13 @@ def _ok(library, fmt, bench, duration_s, channels, median_ms, min_ms, max_ms, ga
         / (median_ms / 1000.0),
         "gate": gate,
         "reason": None,
+        "seek_seconds": seek_seconds,
     }
 
 
-def _withheld(library, fmt, bench, duration_s, channels, status, reason, gate=None):
+def _withheld(
+    library, fmt, bench, duration_s, channels, status, reason, gate=None, seek_seconds=None
+):
     return {
         "library": library,
         "file": f"{duration_s}s_{channels}ch_{fmt}.{'mp3' if fmt == MP3 else fmt.split('_')[0]}",
@@ -55,6 +69,7 @@ def _withheld(library, fmt, bench, duration_s, channels, status, reason, gate=No
         "realtime_factor": None,
         "gate": gate,
         "reason": reason,
+        "seek_seconds": seek_seconds,
     }
 
 
@@ -89,7 +104,9 @@ RECORDS = [
     _ok("soundfile", WAV, "full", 10, 2, median_ms=12.34, min_ms=11.90, max_ms=12.80),
     _ok("soundfile", FLAC, "full", 1, 1, median_ms=3.50, min_ms=3.30, max_ms=3.80),
     _ok("soundfile", MP3, "full", 1, 1, median_ms=4.00, min_ms=3.90, max_ms=4.20, gate="relaxed"),
-    _ok("soundfile", WAV, "seek", 10, 2, median_ms=1.20, min_ms=1.10, max_ms=1.30),
+    _ok(
+        "soundfile", WAV, "seek", 10, 2, median_ms=1.20, min_ms=1.10, max_ms=1.30, seek_seconds=1.0
+    ),
     # flaky: ok on some cells, incorrect on one, no seek support at all
     _ok("flaky", WAV, "full", 1, 1, median_ms=2.50, min_ms=2.40, max_ms=2.60),
     _withheld(
@@ -112,6 +129,7 @@ RECORDS = [
         2,
         status="unsupported",
         reason="flaky has no seek implementation",
+        seek_seconds=1.0,
     ),
     # wavonly: WAV-only, but does support seek
     _ok("wavonly", WAV, "full", 1, 1, median_ms=2.05, min_ms=1.95, max_ms=2.15),
@@ -134,7 +152,7 @@ RECORDS = [
         status="unsupported",
         reason="wavonly does not decode 'mp3' files",
     ),
-    _ok("wavonly", WAV, "seek", 10, 2, median_ms=1.10, min_ms=1.05, max_ms=1.18),
+    _ok("wavonly", WAV, "seek", 10, 2, median_ms=1.10, min_ms=1.05, max_ms=1.18, seek_seconds=1.0),
     # ghost: never available, recorded (not dropped) for every cell
     _withheld(
         "ghost",
@@ -180,6 +198,7 @@ RECORDS = [
         2,
         status="unavailable",
         reason="ImportError: no module named ghost",
+        seek_seconds=1.0,
     ),
     # bytes bench, appended (not interleaved above) so existing positional indices
     # into RECORDS elsewhere in this file are unaffected: soundfile supports it,
@@ -211,6 +230,12 @@ RECORDS = [
         1,
         status="unavailable",
         reason="ImportError: no module named ghost",
+    ),
+    # seek chunk-duration axis: a second chunk length for the same file/duration/
+    # channels, appended (not interleaved with the original seek row above) so
+    # existing positional indices into RECORDS elsewhere in this file are unaffected.
+    _ok(
+        "soundfile", WAV, "seek", 10, 2, median_ms=2.40, min_ms=2.10, max_ms=2.70, seek_seconds=3.0
     ),
 ]
 
@@ -317,16 +342,39 @@ def test_unsupported_cells_show_the_status_word():
     assert as_dict["wavonly"] == "unsupported"
 
 
-def test_seek_table_only_has_the_one_measured_duration_channels_combo():
+def test_seek_table_carries_the_chunk_length_column():
     markdown = render_markdown(RESULTS)
     rows = _table_rows(markdown, f"## {WAV} / seek")
+    header = rows[0]
+    assert "Chunk (s)" in [c.strip() for c in header.strip("|").split("|")]
+
     data_rows = rows[2:]
-    assert len(data_rows) == 1
-    as_dict = _row_as_dict(rows[0], data_rows[0])
-    assert as_dict["soundfile"] == "1.20 ms [1.10–1.30]"
-    assert as_dict["flaky"] == "unsupported"
-    assert as_dict["wavonly"] == "1.10 ms [1.05–1.18]"
-    assert as_dict["ghost"] == "unavailable"
+    as_dicts = [_row_as_dict(header, row) for row in data_rows]
+    # Two chunk lengths for the same (duration, channels) are two separate rows,
+    # not averaged into one -- that is the entire point of the axis.
+    chunks = sorted(float(d["Chunk (s)"]) for d in as_dicts)
+    assert chunks == [1.0, 3.0]
+
+    row_1s = next(d for d in as_dicts if float(d["Chunk (s)"]) == 1.0)
+    row_3s = next(d for d in as_dicts if float(d["Chunk (s)"]) == 3.0)
+    assert row_1s["soundfile"] == "1.20 ms [1.10–1.30]"
+    assert row_1s["flaky"] == "unsupported"
+    assert row_1s["wavonly"] == "1.10 ms [1.05–1.18]"
+    assert row_1s["ghost"] == "unavailable"
+    # Only soundfile has a 3s-chunk record in the fixture; nothing invents a status
+    # for the others at a chunk length they were never run against.
+    assert row_3s["soundfile"] == "2.40 ms [2.10–2.70]"
+    assert row_3s["flaky"] == "-"
+    assert row_3s["wavonly"] == "-"
+    assert row_3s["ghost"] == "-"
+
+
+def test_full_table_has_no_chunk_length_column():
+    """The chunk axis is a seek-only concept; full/bytes tables stay two columns wide."""
+    markdown = render_markdown(RESULTS)
+    rows = _table_rows(markdown, f"## {WAV} / full")
+    header = [c.strip() for c in rows[0].strip("|").split("|")]
+    assert "Chunk (s)" not in header
 
 
 def test_bytes_cross_table_renders_without_special_casing():
@@ -391,10 +439,30 @@ def test_measurement_noise_section_handles_no_ok_records():
 
 def test_write_plots_creates_non_empty_files_for_every_bench(tmp_path: Path):
     paths = write_plots(RESULTS, tmp_path)
-    assert len(paths) == 3  # "full", "seek" and "bytes" all appear in RECORDS
+    # "full", "seek" and "bytes" all appear in RECORDS, plus the standalone
+    # seek_scaling.png figure.
+    assert len(paths) == 4
     for path in paths:
         assert path.exists()
         assert path.stat().st_size > 0
+
+
+def test_write_plots_creates_a_seek_scaling_png(tmp_path: Path):
+    write_plots(RESULTS, tmp_path)
+    seek_scaling_png = tmp_path / "seek_scaling.png"
+    assert seek_scaling_png.exists()
+    assert seek_scaling_png.stat().st_size > 0
+
+
+def test_seek_scaling_png_is_produced_even_with_no_seek_data(tmp_path: Path):
+    """A placeholder figure, not a missing file, when there is nothing to plot."""
+    full_only = [r for r in RECORDS if r["bench"] != "seek"]
+    results = {"platform": PLATFORM, "records": full_only}
+    paths = write_plots(results, tmp_path)
+    seek_scaling_png = tmp_path / "seek_scaling.png"
+    assert seek_scaling_png in paths
+    assert seek_scaling_png.exists()
+    assert seek_scaling_png.stat().st_size > 0
 
 
 def test_write_plots_creates_a_bytes_png(tmp_path: Path):

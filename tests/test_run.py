@@ -17,7 +17,7 @@ import soundfile as sf
 
 from pabench.corpus import CorpusSpec, Fmt, generate
 from pabench.loaders import Loader
-from pabench.run import Record, platform_block, run, seek_offset, write_results
+from pabench.run import SEEK_DURATIONS, Record, platform_block, run, seek_offset, write_results
 
 WAV_PCM16 = Fmt("wav", "PCM_16")
 
@@ -30,6 +30,14 @@ def _spec(duration_s: int, channels: int, fmt: Fmt = WAV_PCM16) -> CorpusSpec:
 def corpus_dir(tmp_path: Path) -> Path:
     directory = tmp_path / "corpus"
     generate(directory, specs=(_spec(10, 2), _spec(1, 1)))
+    return directory
+
+
+@pytest.fixture()
+def five_second_corpus_dir(tmp_path: Path) -> Path:
+    """A 5 s file: long enough for the 1s/3s seek chunks, too short for 10s/30s."""
+    directory = tmp_path / "corpus5"
+    generate(directory, specs=(_spec(5, 2),))
     return directory
 
 
@@ -140,21 +148,54 @@ def _records_for(results: dict, library: str) -> list[dict]:
 
 def test_seek_offset_is_deterministic():
     spec = _spec(60, 2)
-    assert seek_offset(spec) == seek_offset(spec)
+    assert seek_offset(spec, 1.0) == seek_offset(spec, 1.0)
 
 
 def test_seek_offset_lands_in_middle_half():
     spec = _spec(60, 2)
-    offset = seek_offset(spec)
+    offset = seek_offset(spec, 1.0)
     assert 15.0 <= offset <= 45.0  # [0.25, 0.75] * 60s
     assert offset + 1.0 <= spec.duration_s
 
 
 def test_seek_offset_on_a_one_second_file_leaves_room_for_the_read():
     spec = _spec(1, 1)
-    offset = seek_offset(spec)
+    offset = seek_offset(spec, 1.0)
     assert offset >= 0.0
     assert offset + 1.0 <= spec.duration_s
+
+
+def test_seek_offset_respects_the_chunk_length_argument():
+    spec = _spec(60, 2)
+    for chunk in SEEK_DURATIONS:
+        offset = seek_offset(spec, chunk)
+        assert offset >= 0.0
+        # Reading `chunk` seconds from `offset` must never run past the end of the file.
+        assert offset + chunk <= spec.duration_s + 1e-9
+
+
+def test_seek_offset_never_reads_past_the_end_for_a_short_file():
+    spec = _spec(10, 2)
+    for chunk in (1.0, 3.0, 10.0):
+        offset = seek_offset(spec, chunk)
+        assert offset >= 0.0
+        assert offset + chunk <= spec.duration_s + 1e-9
+
+
+def test_seek_offset_when_chunk_equals_the_whole_file_returns_zero():
+    """Degenerate case: no room to bias towards the middle half at all."""
+    spec = _spec(10, 2)
+    offset = seek_offset(spec, 10.0)
+    assert offset == 0.0
+    assert offset + 10.0 <= spec.duration_s + 1e-9
+
+
+def test_seek_offset_quantises_to_a_sample_boundary():
+    spec = _spec(60, 2)
+    for chunk in SEEK_DURATIONS:
+        offset = seek_offset(spec, chunk)
+        frame = offset * spec.sample_rate
+        assert abs(frame - round(frame)) < 1e-6
 
 
 # ---- run(): correctness of the loop's own logic ------------------------------
@@ -177,7 +218,8 @@ def test_correct_loader_yields_ok_for_both_benches(corpus_dir):
 def test_unavailable_loader_is_recorded_with_its_error(corpus_dir):
     results = run(corpus_dir, [_unavailable_loader()], specs=(_spec(10, 2),), repeat=2)
     records = _records_for(results, "broken_import")
-    assert len(records) == 2  # one per bench: not dropped
+    # 1 full + 3 seek chunk lengths (1/3/10s all fit inside a 10s file): not dropped.
+    assert len(records) == 4
     for record in records:
         assert record["status"] == "unavailable"
         assert record["reason"] == "ImportError: no such module"
@@ -219,6 +261,63 @@ def test_seekless_loader_is_unsupported_for_seek_but_ok_for_full(corpus_dir):
     assert records["full"]["status"] == "ok"
     assert records["seek"]["status"] == "unsupported"
     assert records["seek"]["median_ms"] is None
+
+
+# ---- seek chunk-duration axis --------------------------------------------------
+
+
+def test_seek_bench_skips_chunk_durations_longer_than_the_file(five_second_corpus_dir):
+    results = run(
+        five_second_corpus_dir,
+        [_correct_loader()],
+        specs=(_spec(5, 2),),
+        benches=("seek",),
+        repeat=1,
+    )
+    records = _records_for(results, "correct")
+    # Only 1s/3s fit inside a 5s file; 10s/30s must not be emitted at all (not
+    # "unsupported" -- simply absent).
+    assert sorted(r["seek_seconds"] for r in records) == [1.0, 3.0]
+    assert all(r["status"] == "ok" for r in records)
+
+
+def test_seek_bench_emits_one_record_per_applicable_chunk_duration(corpus_dir):
+    results = run(
+        corpus_dir,
+        [_correct_loader()],
+        specs=(_spec(10, 2),),
+        benches=("seek",),
+        repeat=1,
+    )
+    records = _records_for(results, "correct")
+    assert sorted(r["seek_seconds"] for r in records) == [1.0, 3.0, 10.0]
+    assert all(r["status"] == "ok" for r in records)
+
+
+def test_seek_durations_argument_filters_which_chunks_are_used(corpus_dir):
+    results = run(
+        corpus_dir,
+        [_correct_loader()],
+        specs=(_spec(10, 2),),
+        benches=("seek",),
+        seek_durations=(3.0,),
+        repeat=1,
+    )
+    records = _records_for(results, "correct")
+    assert [r["seek_seconds"] for r in records] == [3.0]
+
+
+def test_full_and_bytes_records_have_seek_seconds_none(corpus_dir):
+    results = run(
+        corpus_dir,
+        [_correct_loader(from_bytes=True)],
+        specs=(_spec(10, 2),),
+        benches=("full", "bytes"),
+        repeat=1,
+    )
+    records = _records_for(results, "correct")
+    assert records
+    assert all(r["seek_seconds"] is None for r in records)
 
 
 def test_loader_not_claiming_the_container_is_unsupported(corpus_dir):
@@ -368,8 +467,31 @@ def test_record_is_a_frozen_dataclass_with_expected_fields():
         gate="exact",
         reason=None,
     )
+    # `seek_seconds` defaults to None so existing constructions (no chunk length
+    # named) keep working.
+    assert record.seek_seconds is None
     with pytest.raises(dataclasses.FrozenInstanceError):
         record.status = "error"  # type: ignore[misc]
+
+
+def test_record_seek_seconds_can_be_set_explicitly():
+    record = Record(
+        library="x",
+        file="f.wav",
+        duration_s=10,
+        channels=2,
+        format="wav",
+        bench="seek",
+        status="ok",
+        median_ms=1.0,
+        min_ms=1.0,
+        max_ms=1.0,
+        realtime_factor=1.0,
+        gate="exact",
+        reason=None,
+        seek_seconds=3.0,
+    )
+    assert record.seek_seconds == 3.0
 
 
 def test_write_results_round_trips_through_json(tmp_path):

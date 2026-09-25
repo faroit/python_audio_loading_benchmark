@@ -149,8 +149,34 @@ def _library_table(results: dict) -> str:
 
 
 def _cross_table(format_key: str, bench: str, records: Records, libraries: list[str]) -> str:
-    """One table for a (format, bench) pair: libraries as columns, (duration, channels) rows."""
+    """One table for a (format, bench) pair: libraries as columns.
+
+    Rows are (duration, channels) for `full`/`bytes`, and (duration, channels, chunk
+    length) for `seek` -- the chunk length is a distinct axis with real consequences
+    for what is being measured (a seek's fixed cost dominates at a short chunk, its
+    per-second decode cost at a long one), so two chunk lengths for the same file are
+    two separate rows here, never averaged into one.
+    """
     subset = [r for r in records if r["format"] == format_key and r["bench"] == bench]
+
+    if bench == "seek":
+        cell_by_key = {
+            (r["duration_s"], r["channels"], r.get("seek_seconds"), r["library"]): r for r in subset
+        }
+        axes = sorted(
+            {(r["duration_s"], r["channels"], r.get("seek_seconds")) for r in subset},
+            key=lambda axis: (axis[0], axis[1], axis[2] if axis[2] is not None else -1.0),
+        )
+        header = ["Duration (s)", "Channels", "Chunk (s)", *libraries]
+        rows = []
+        for duration_s, channels, chunk_seconds in axes:
+            row = [str(duration_s), str(channels), str(chunk_seconds)]
+            for library in libraries:
+                record = cell_by_key.get((duration_s, channels, chunk_seconds, library))
+                row.append(_format_cell(record) if record is not None else "-")
+            rows.append(row)
+        return _markdown_table(header, rows)
+
     cell_by_key = {(r["duration_s"], r["channels"], r["library"]): r for r in subset}
     axes = sorted({(r["duration_s"], r["channels"]) for r in subset})
 
@@ -440,15 +466,124 @@ def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[s
     return out_path
 
 
-def write_plots(results: dict, out_dir: Path) -> list[Path]:
-    """Write one figure per bench present in `results["records"]` under `out_dir`.
+def _plot_seek_scaling(records: Records, out_dir: Path, style_order: list[str]) -> Path:
+    """`seek_scaling.png`: chunk duration vs. median time, one line per library.
 
-    Each figure is a seaborn `FacetGrid`: a log-log grid of duration versus median
-    decode time (ms), formats across the columns and channel counts down the rows,
-    one line per library, with a single legend outside the axes. Only `status == "ok"`
-    records with a timing are plotted; withheld (`None`) timings are skipped without
-    raising, and a bench with no plottable data yields a placeholder figure rather
-    than no file.
+    This is the figure the chunk-duration axis exists for: a seek's cost is
+    `fixed_locate_cost + per_second_decode_cost * chunk_length`, and plotting median
+    time against chunk length on log-log axes shows the fixed-cost intercept and the
+    per-second slope directly, which a single fixed chunk length cannot (see
+    `docs/refactor-design.md`).
+
+    Restricted to the longest file duration present and stereo files -- the cleanest
+    signal, and the one comparison this figure is meant to make -- faceted by format,
+    with one line per library. Only `bench == "seek"`, `status == "ok"` records with a
+    timing are plotted; a run with no such data (or none at the longest duration in
+    stereo) yields a placeholder figure rather than no file, matching `_plot_bench`.
+    """
+    out_path = Path(out_dir) / "seek_scaling.png"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    candidates = [
+        r
+        for r in records
+        if r["bench"] == "seek"
+        and r["status"] == "ok"
+        and r["median_ms"] is not None
+        and r.get("seek_seconds") is not None
+        and r["channels"] == 2
+    ]
+
+    if not candidates:
+        fig = plt.figure(figsize=(6, 2))
+        fig.text(0.5, 0.5, "no seek data", ha="center", va="center", color=_MUTED_TEXT)
+        fig.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        return out_path
+
+    longest_duration = max(r["duration_s"] for r in candidates)
+    plotted = [r for r in candidates if r["duration_s"] == longest_duration]
+
+    frame = pd.DataFrame(
+        [
+            {
+                "chunk_seconds": r["seek_seconds"],
+                "median_ms": r["median_ms"],
+                "library": r["library"],
+                "format": r["format"],
+            }
+            for r in plotted
+        ]
+    )
+    present = [name for name in style_order if name in set(frame["library"])]
+    colors, markers = _library_styles(style_order)
+    formats = [f for f in sorted({*frame["format"]}, key=_format_sort_key)]
+
+    sns.set_theme(
+        style="whitegrid",
+        rc={"grid.color": _GRIDLINE, "grid.linewidth": 0.6},
+    )
+    grid = sns.relplot(
+        data=frame,
+        x="chunk_seconds",
+        y="median_ms",
+        hue="library",
+        style="library",
+        hue_order=present,
+        style_order=present,
+        palette={name: colors[name] for name in present},
+        markers={name: markers[name] for name in present},
+        dashes=False,
+        col="format",
+        col_order=formats,
+        kind="line",
+        markersize=5,
+        linewidth=1.8,
+        height=3.1,
+        aspect=1.3,
+        facet_kws={"sharey": False, "legend_out": True},
+    )
+    grid.set(xscale="log", yscale="log")
+    # Minor gridlines on both log axes: on a log-log plot the decade lines alone leave
+    # most of the plane unreferenced, and reading a value between them is guesswork.
+    for ax in grid.axes.flat:
+        ax.grid(True, which="major", color=_GRIDLINE, linewidth=0.7)
+        ax.grid(True, which="minor", color=_GRIDLINE, linewidth=0.4, alpha=0.6)
+        ax.set_axisbelow(True)
+    grid.figure.subplots_adjust(wspace=0.22)
+    grid.set_axis_labels("chunk duration (s)", "median (ms)")
+    grid.set_titles(col_template="{col_name}")
+    grid.figure.suptitle(
+        f"seek scaling at {longest_duration}s, stereo: chunk duration vs. "
+        "median time (log-log, lower is better)",
+        y=1.02,
+        color="#0b0b0b",
+    )
+    if grid.legend is not None:
+        grid.legend.set_title("library")
+    for ax in grid.axes.flat:
+        ax.tick_params(colors=_MUTED_TEXT, labelsize=8)
+        ax.xaxis.label.set_color(_MUTED_TEXT)
+        ax.yaxis.label.set_color(_MUTED_TEXT)
+
+    grid.savefig(out_path, dpi=150, bbox_inches="tight")
+    plt.close(grid.figure)
+    return out_path
+
+
+def write_plots(results: dict, out_dir: Path) -> list[Path]:
+    """Write one figure per bench present in `results["records"]`, plus `seek_scaling.png`.
+
+    Each per-bench figure is a seaborn `FacetGrid`: a log-log grid of duration versus
+    median decode time (ms), formats across the columns and channel counts down the
+    rows, one line per library, with a single legend outside the axes. Only
+    `status == "ok"` records with a timing are plotted; withheld (`None`) timings are
+    skipped without raising, and a bench with no plottable data yields a placeholder
+    figure rather than no file.
+
+    `seek_scaling.png` is always written in addition (see `_plot_seek_scaling`): the
+    seek chunk-duration axis's own figure, restricted to the longest file duration and
+    stereo channels.
     """
     records = results.get("records", [])
     benches = sorted({r["bench"] for r in records}, key=_bench_sort_key)
@@ -456,4 +591,6 @@ def write_plots(results: dict, out_dir: Path) -> list[Path]:
     # whether or not a given figure draws it.
     style_order = sorted({r["library"] for r in records})
     out_dir = Path(out_dir)
-    return [_plot_bench(records, bench, out_dir, style_order) for bench in benches]
+    paths = [_plot_bench(records, bench, out_dir, style_order) for bench in benches]
+    paths.append(_plot_seek_scaling(records, out_dir, style_order))
+    return paths

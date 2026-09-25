@@ -159,6 +159,120 @@ def test_bench_all_runs_full_seek_and_bytes(tmp_path):
     assert {r["bench"] for r in data["records"]} == {"full", "seek", "bytes"}
 
 
+def _gen_10s_stereo(corpus_dir: Path) -> int:
+    return main(
+        [
+            "gen",
+            "--corpus-dir",
+            str(corpus_dir),
+            "--durations",
+            "10",
+            "--channels",
+            "2",
+            "--formats",
+            "wav_pcm16",
+        ]
+    )
+
+
+def test_run_seek_durations_filters_the_seek_bench_to_requested_chunks(tmp_path):
+    corpus_dir = tmp_path / "corpus"
+    results_path = tmp_path / "results.json"
+    assert _gen_10s_stereo(corpus_dir) == 0
+
+    rc = main(
+        [
+            "run",
+            "--corpus-dir",
+            str(corpus_dir),
+            "--durations",
+            "10",
+            "--channels",
+            "2",
+            "--formats",
+            "wav_pcm16",
+            "--library",
+            "soundfile",
+            "--bench",
+            "seek",
+            "--seek-durations",
+            "3",
+            "--repeat",
+            "1",
+            "--out",
+            str(results_path),
+        ]
+    )
+    assert rc == 0
+    data = json.loads(results_path.read_text())
+    assert data["records"]
+    assert {r["seek_seconds"] for r in data["records"]} == {3.0}
+
+
+def test_run_seek_durations_defaults_to_every_chunk_that_fits_the_file(tmp_path):
+    corpus_dir = tmp_path / "corpus"
+    results_path = tmp_path / "results.json"
+    assert _gen_10s_stereo(corpus_dir) == 0
+
+    rc = main(
+        [
+            "run",
+            "--corpus-dir",
+            str(corpus_dir),
+            "--durations",
+            "10",
+            "--channels",
+            "2",
+            "--formats",
+            "wav_pcm16",
+            "--library",
+            "soundfile",
+            "--bench",
+            "seek",
+            "--repeat",
+            "1",
+            "--out",
+            str(results_path),
+        ]
+    )
+    assert rc == 0
+    data = json.loads(results_path.read_text())
+    # 1/3/10s all fit inside a 10s file; 30s does not and must not appear.
+    assert {r["seek_seconds"] for r in data["records"]} == {1.0, 3.0, 10.0}
+
+
+def test_all_accepts_seek_durations(tmp_path):
+    corpus_dir = tmp_path / "corpus"
+    out_path = tmp_path / "results.json"
+    assert _gen_10s_stereo(corpus_dir) == 0
+
+    rc = main(
+        [
+            "all",
+            "--corpus-dir",
+            str(corpus_dir),
+            "--durations",
+            "10",
+            "--channels",
+            "2",
+            "--formats",
+            "wav_pcm16",
+            "--seek-durations",
+            "1",
+            "3",
+            "--repeat",
+            "1",
+            "--out",
+            str(out_path),
+        ]
+    )
+    assert rc == 0
+    data = json.loads(out_path.read_text())
+    seek_records = [r for r in data["records"] if r["bench"] == "seek"]
+    assert seek_records
+    assert {r["seek_seconds"] for r in seek_records} == {1.0, 3.0}
+
+
 def test_report_renders_markdown_and_plots_from_an_existing_results_file(tmp_path):
     corpus_dir = tmp_path / "corpus"
     results_path = tmp_path / "results.json"
@@ -250,6 +364,7 @@ def test_all_generates_runs_and_reports_end_to_end_on_a_tiny_corpus(tmp_path):
     assert (out_path.parent / "full.png").exists()
     assert (out_path.parent / "seek.png").exists()
     assert (out_path.parent / "bytes.png").exists()
+    assert (out_path.parent / "seek_scaling.png").exists()
 
     data = json.loads(out_path.read_text())
     # every registered library was probed, whether or not it ended up available

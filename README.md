@@ -67,7 +67,7 @@ FFmpeg's shared libraries are located automatically for `torchcodec`; no environ
 ### What is measured
 
 - **full** — decode the whole file.
-- **seek** — decode 1 s from a fixed, seeded offset.
+- **seek** — decode a chunk from a fixed, seeded offset, at four chunk lengths: 1, 3, 10, and 30 s (skipping any chunk longer than the file).
 - **bytes** — decode the whole file from an in-memory buffer instead of a path; the file's bytes are read into memory once, before timing starts, so this measures decode-from-memory, not disk I/O.
 
 Corpus: 44.1 kHz, 1/10/60/300 s, mono and stereo, as 16-bit WAV, FLAC and MP3. Each timing is the median of N trials after one untimed warmup, against a warm page cache — the question is decode speed, not disk speed.

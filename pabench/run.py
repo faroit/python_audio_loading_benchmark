@@ -1,6 +1,11 @@
 """The run loop: loaders + a corpus -> a results dict, and its JSON serialisation.
 
-For every (library, file, bench) triple this produces exactly one `Record`. A
+For every (library, file, bench) triple this produces exactly one `Record`, except
+for `bench == "seek"`: a seek chunk length has real consequences for what is being
+measured (`docs/refactor-design.md`), so `run()` produces one `Record` per
+(library, file, chunk length) for every chunk length in `SEEK_DURATIONS` (or
+whatever subset the caller passes) that actually fits the file -- a chunk longer
+than the file is skipped entirely rather than recorded with an invented status. A
 library that isn't available, doesn't claim a file's container, has no seek
 implementation, or has no `from_bytes` implementation never touches the decoder
 or the correctness gate for that triple -- it's recorded as
@@ -41,7 +46,12 @@ from pabench.verify import compare, compare_seek
 Bench = Literal["full", "seek", "bytes"]
 Status = Literal["ok", "unavailable", "incorrect", "error", "unsupported"]
 
-SEEK_SECONDS = 1.0
+#: Chunk lengths the seek bench measures. A seek's cost is
+#: `fixed_locate_cost + per_second_decode_cost * chunk_length`; at 1s the fixed cost
+#: dominates for every library, at 30s the decode cost does, and one chunk length
+#: cannot show that tradeoff. `run()` measures a given (file, chunk) pair only when
+#: `chunk <= file duration` -- see `run()` and `seek_offset`.
+SEEK_DURATIONS: tuple[float, ...] = (1.0, 3.0, 10.0, 30.0)
 
 ProgressFn = Callable[[str, str], None]  # (library name, corpus filename) -> None
 
@@ -65,20 +75,25 @@ class Record:
     #: the full range grows with the trial count, so ranges from runs with different
     #: `--repeat` values are not comparable, while the IQR is stable.
     iqr_ms: float | None = None
+    #: The seek chunk length this record measures, `None` for `full`/`bytes` records.
+    #: Placed last with a default so existing positional/keyword constructions of
+    #: `Record` (predating the chunk-duration axis) keep working unchanged.
+    seek_seconds: float | None = None
 
 
-def seek_offset(spec: CorpusSpec, seed: int = 0) -> float:
+def seek_offset(spec: CorpusSpec, chunk_seconds: float, seed: int = 0) -> float:
     """A deterministic seek start (seconds) landing in the middle half of the file.
 
-    Chosen so that reading `SEEK_SECONDS` starting at the returned offset never
-    runs past the end of the file: the start frame is clamped to
+    Chosen so that reading `chunk_seconds` seconds starting at the returned offset
+    never runs past the end of the file: the start frame is clamped to
     `[0, total_frames - read_frames]`, biased towards the middle half
     (`[0.25, 0.75] * duration_s`) whenever that band leaves room for the read.
 
     Degenerate case: when the file is too short to leave any room at all (a
-    `duration_s <= SEEK_SECONDS` file, e.g. the corpus's 1 s files), the middle
-    half can't be honoured without reading past the end, so this returns `0.0`
-    rather than a negative or out-of-range offset.
+    `duration_s <= chunk_seconds` file -- including `chunk_seconds == duration_s`,
+    i.e. the chunk is the whole file), the middle half can't be honoured without
+    reading past the end, so this returns `0.0` rather than a negative or
+    out-of-range offset.
 
     The result is deliberately computed as an integer frame count divided by
     `spec.sample_rate`, not as an arbitrary float in the middle-half band: two
@@ -91,7 +106,7 @@ def seek_offset(spec: CorpusSpec, seed: int = 0) -> float:
     this function's own choice of offset.
     """
     total_frames = spec.frames
-    read_frames = round(SEEK_SECONDS * spec.sample_rate)
+    read_frames = round(chunk_seconds * spec.sample_rate)
     max_start_frame = max(0, total_frames - read_frames)
     if max_start_frame <= 0:
         return 0.0
@@ -101,7 +116,10 @@ def seek_offset(spec: CorpusSpec, seed: int = 0) -> float:
     if middle_hi_frame <= middle_lo_frame:
         start_frame = middle_lo_frame
     else:
-        key = f"{seed}:{spec.duration_s}:{spec.channels}:{spec.sample_rate}:{spec.fmt.key}"
+        key = (
+            f"{seed}:{spec.duration_s}:{spec.channels}:{spec.sample_rate}:"
+            f"{spec.fmt.key}:{chunk_seconds}"
+        )
         digest = hashlib.sha256(key.encode("utf-8")).digest()
         fraction = int.from_bytes(digest[:8], "big") / 2**64
         start_frame = middle_lo_frame + round(fraction * (middle_hi_frame - middle_lo_frame))
@@ -173,7 +191,7 @@ def platform_block(loaders: list[Loader], corpus_dir: Path | None = None) -> dic
 
 
 def _decode_fn(
-    loader: Loader, path: Path, bench: Bench, start_seconds: float
+    loader: Loader, path: Path, bench: Bench, start_seconds: float, chunk_seconds: float | None
 ) -> Callable[[], object]:
     if bench == "full":
         return lambda: to_tensor(loader.full(path), loader.layout)
@@ -185,7 +203,8 @@ def _decode_fn(
         # docs/refactor-design.md).
         raw_bytes = path.read_bytes()
         return lambda: to_tensor(loader.from_bytes(raw_bytes), loader.layout)
-    return lambda: to_tensor(loader.seek(path, start_seconds, SEEK_SECONDS), loader.layout)
+    assert chunk_seconds is not None  # every "seek" call site supplies a chunk length
+    return lambda: to_tensor(loader.seek(path, start_seconds, chunk_seconds), loader.layout)
 
 
 def _unmeasured(
@@ -196,6 +215,7 @@ def _unmeasured(
     status: Status,
     reason: str | None,
     gate: str | None = None,
+    seek_seconds: float | None = None,
 ) -> Record:
     return Record(
         library=library,
@@ -212,6 +232,7 @@ def _unmeasured(
         realtime_factor=None,
         gate=gate,
         reason=reason,
+        seek_seconds=seek_seconds,
     )
 
 
@@ -222,10 +243,20 @@ def _build_record(
     bench: Bench,
     repeat: int,
     reference_for: Callable[[Path], torch.Tensor],
+    chunk_seconds: float | None = None,
 ) -> Record:
+    """Build one record. `chunk_seconds` is the seek chunk length for `bench == "seek"`,
+    `None` for `full`/`bytes`; the caller (`run()`) is responsible for only calling this
+    for a `(spec, chunk_seconds)` pair where the chunk actually fits the file.
+    """
     if not loader.available:
         return _unmeasured(
-            library=loader.name, spec=spec, bench=bench, status="unavailable", reason=loader.error
+            library=loader.name,
+            spec=spec,
+            bench=bench,
+            status="unavailable",
+            reason=loader.error,
+            seek_seconds=chunk_seconds,
         )
 
     if spec.fmt.container not in loader.formats:
@@ -235,6 +266,7 @@ def _build_record(
             bench=bench,
             status="unsupported",
             reason=f"{loader.name} does not decode {spec.fmt.container!r} files",
+            seek_seconds=chunk_seconds,
         )
 
     if bench == "seek" and loader.seek is None:
@@ -244,6 +276,7 @@ def _build_record(
             bench=bench,
             status="unsupported",
             reason=f"{loader.name} has no seek implementation",
+            seek_seconds=chunk_seconds,
         )
 
     if bench == "bytes" and loader.from_bytes is None:
@@ -255,14 +288,14 @@ def _build_record(
             reason=f"{loader.name} has no from_bytes implementation",
         )
 
-    start_seconds = seek_offset(spec) if bench == "seek" else 0.0
-    decode = _decode_fn(loader, path, bench, start_seconds)
+    start_seconds = seek_offset(spec, chunk_seconds) if bench == "seek" else 0.0
+    decode = _decode_fn(loader, path, bench, start_seconds, chunk_seconds)
 
     try:
         full_reference = reference_for(path)
         if bench == "seek":
             reference = _slice_reference(
-                full_reference, start_seconds, SEEK_SECONDS, spec.sample_rate
+                full_reference, start_seconds, chunk_seconds, spec.sample_rate
             )
         else:
             reference = full_reference
@@ -281,6 +314,7 @@ def _build_record(
             bench=bench,
             status="error",
             reason=f"{type(exc).__name__}: {exc}",
+            seek_seconds=chunk_seconds,
         )
 
     if not verify_result.ok:
@@ -291,6 +325,7 @@ def _build_record(
             status="incorrect",
             reason=verify_result.reason,
             gate=verify_result.gate,
+            seek_seconds=chunk_seconds,
         )
 
     try:
@@ -303,11 +338,15 @@ def _build_record(
             status="error",
             reason=f"{type(exc).__name__}: {exc}",
             gate=verify_result.gate,
+            seek_seconds=chunk_seconds,
         )
 
     # "bytes" is a full-file decode differing only in where the input comes from, so
     # it is measured against the whole file's duration exactly like "full".
-    audio_seconds = float(spec.duration_s) if bench in ("full", "bytes") else SEEK_SECONDS
+    if bench in ("full", "bytes"):
+        audio_seconds = float(spec.duration_s)
+    else:
+        audio_seconds = chunk_seconds
     return Record(
         library=loader.name,
         file=spec.filename,
@@ -323,6 +362,7 @@ def _build_record(
         realtime_factor=realtime_factor(audio_seconds, timing.median_ms),
         gate=verify_result.gate,
         reason=None,
+        seek_seconds=chunk_seconds if bench == "seek" else None,
     )
 
 
@@ -332,6 +372,7 @@ def run(
     specs: tuple[CorpusSpec, ...] = DEFAULT_SPECS,
     repeat: int = DEFAULT_REPEAT,
     benches: tuple[Bench, ...] = ("full", "seek"),
+    seek_durations: tuple[float, ...] = SEEK_DURATIONS,
     progress: ProgressFn | None = None,
 ) -> dict:
     """Run every loader against every corpus file/bench, returning JSON-ready results.
@@ -342,6 +383,11 @@ def run(
     The `soundfile` reference for a file is decoded once and reused for every
     library and bench that needs it (a `seek` reference is a slice of that same
     decode, not a second file read).
+
+    The `seek` bench runs once per chunk length in `seek_durations` per file, but
+    only for chunk lengths that fit inside the file (`chunk <= spec.duration_s`): a
+    chunk longer than the file makes no sense, so that combination is skipped
+    entirely rather than recorded with some invented status.
     """
     corpus = corpus_files(corpus_dir, specs)
 
@@ -361,7 +407,17 @@ def run(
             if progress is not None:
                 progress(loader.name, spec.filename)
             for bench in benches:
-                records.append(_build_record(loader, spec, path, bench, repeat, reference_for))
+                if bench != "seek":
+                    records.append(_build_record(loader, spec, path, bench, repeat, reference_for))
+                    continue
+                for chunk_seconds in sorted(seek_durations):
+                    if chunk_seconds > spec.duration_s:
+                        continue
+                    records.append(
+                        _build_record(
+                            loader, spec, path, bench, repeat, reference_for, chunk_seconds
+                        )
+                    )
 
     return {
         "platform": platform_block(loaders, corpus_dir),

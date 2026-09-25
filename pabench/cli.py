@@ -30,8 +30,8 @@ from pabench.corpus import DEFAULT_SPECS, FORMATS, CorpusSpec, generate
 from pabench.ffmpeg_env import ensure_ffmpeg_libs
 from pabench.loaders import PROBES, available_loaders
 from pabench.report import render_markdown, write_plots
+from pabench.run import SEEK_DURATIONS, write_results
 from pabench.run import run as run_benchmark
-from pabench.run import write_results
 from pabench.timing import DEFAULT_REPEAT
 
 #: Environment variable that supplies the default for `--corpus-dir`, so a corpus on
@@ -97,6 +97,36 @@ def _select_specs(args: argparse.Namespace) -> tuple[CorpusSpec, ...]:
     return tuple(spec for spec in DEFAULT_SPECS if _matches(spec))
 
 
+def _select_seek_durations(args: argparse.Namespace) -> tuple[float, ...]:
+    """`SEEK_DURATIONS` filtered by `--seek-durations`, if given (default: all four).
+
+    Mirrors `_select_specs`: filters the known chunk lengths down to the requested
+    subset rather than trusting arbitrary values through, so an unknown chunk length
+    is silently dropped instead of fabricating a new one `run()` was never designed
+    to skip-check against.
+    """
+    requested = getattr(args, "seek_durations", None)
+    if not requested:
+        return SEEK_DURATIONS
+    wanted = set(requested)
+    return tuple(d for d in SEEK_DURATIONS if d in wanted)
+
+
+def _add_seek_durations_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--seek-durations",
+        type=float,
+        nargs="+",
+        default=None,
+        metavar="SECONDS",
+        help=(
+            "restrict the seek bench to these chunk lengths (default: all four -- "
+            f"{', '.join(str(d) for d in SEEK_DURATIONS)}); a chunk longer than a "
+            "given file is skipped regardless"
+        ),
+    )
+
+
 def _bench_tuple(bench: str) -> tuple[str, ...]:
     if bench == "both":
         return ("full", "seek")
@@ -158,6 +188,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
             specs=specs,
             repeat=args.repeat,
             benches=benches,
+            seek_durations=_select_seek_durations(args),
             progress=_progress,
         )
     except FileNotFoundError as exc:
@@ -229,6 +260,7 @@ def _cmd_all(args: argparse.Namespace) -> int:
             specs=specs,
             repeat=args.repeat,
             benches=("full", "seek", "bytes"),
+            seek_durations=_select_seek_durations(args),
             progress=_progress,
         )
     except FileNotFoundError as exc:
@@ -265,6 +297,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="restrict to this library (repeatable; default: all eleven)",
     )
     run_parser.add_argument("--bench", choices=_BENCH_CHOICES, default="both")
+    _add_seek_durations_arg(run_parser)
     run_parser.add_argument("--repeat", type=int, default=DEFAULT_REPEAT)
     run_parser.add_argument("--out", default="results/results.json")
     run_parser.add_argument(
@@ -288,6 +321,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="generate what's missing, run all three benchmarks (all libraries), write the report",
     )
     _add_filter_args(all_parser)
+    _add_seek_durations_arg(all_parser)
     all_parser.add_argument("--repeat", type=int, default=DEFAULT_REPEAT)
     all_parser.add_argument("--out", default="results/results.json")
     all_parser.add_argument(
