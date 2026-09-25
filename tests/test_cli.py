@@ -15,12 +15,13 @@ wherever this suite runs.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from pabench import cli
-from pabench.cli import console_main, main
+from pabench.cli import CORPUS_DIR_ENV, console_main, main
 from pabench.loaders import PROBES
 
 # A single, cheap spec (1 second, mono, PCM_16 WAV) used by every test below that
@@ -295,3 +296,83 @@ def test_help_exits_0(argv, capsys):
     captured = capsys.readouterr()
     assert rc == 0
     assert captured.out != ""
+
+
+def test_corpus_dir_defaults_to_the_environment_variable(tmp_path, monkeypatch):
+    """A corpus on another disk should not need naming on every subcommand."""
+    monkeypatch.setenv(CORPUS_DIR_ENV, str(tmp_path / "elsewhere"))
+    assert main(["gen", "--durations", "1", "--channels", "1", "--formats", "wav_pcm16"]) == 0
+    assert list((tmp_path / "elsewhere").glob("*.wav"))
+
+
+def test_explicit_corpus_dir_beats_the_environment_variable(tmp_path, monkeypatch):
+    monkeypatch.setenv(CORPUS_DIR_ENV, str(tmp_path / "ignored"))
+    chosen = tmp_path / "chosen"
+    assert (
+        main(
+            [
+                "gen",
+                "--corpus-dir",
+                str(chosen),
+                "--durations",
+                "1",
+                "--channels",
+                "1",
+                "--formats",
+                "wav_pcm16",
+            ]
+        )
+        == 0
+    )
+    assert list(chosen.glob("*.wav"))
+    assert not (tmp_path / "ignored").exists()
+
+
+def _break_one_probe(monkeypatch, name="pedalboard"):
+    """Make one probe report unavailable, as an uninstalled library would."""
+    from pabench import loaders as loaders_module
+
+    real = loaders_module.PROBES[name]
+
+    def broken():
+        loader = real()
+        return replace(
+            loader,
+            available=False,
+            full=None,
+            seek=None,
+            error=f"ModuleNotFoundError: No module named '{name}'",
+        )
+
+    monkeypatch.setitem(loaders_module.PROBES, name, broken)
+
+
+def test_run_refuses_when_a_library_is_missing(tmp_path, monkeypatch, capsys):
+    """A report whose cells are mostly 'unavailable' is not a benchmark result."""
+    _break_one_probe(monkeypatch)
+    corpus = tmp_path / "corpus"
+    main(["gen", "--corpus-dir", str(corpus), "--durations", "1", "--channels", "1",
+          "--formats", "wav_pcm16"])
+    code = main(["run", "--corpus-dir", str(corpus), "--out", str(tmp_path / "r.json"),
+                 "--repeat", "2", "--durations", "1", "--channels", "1",
+                 "--formats", "wav_pcm16"])
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "pedalboard" in err
+    assert "--allow-missing" in err
+    assert "uv sync" in err
+    assert not (tmp_path / "r.json").exists()
+
+
+def test_allow_missing_proceeds_and_records_the_gap(tmp_path, monkeypatch):
+    _break_one_probe(monkeypatch)
+    corpus = tmp_path / "corpus"
+    main(["gen", "--corpus-dir", str(corpus), "--durations", "1", "--channels", "1",
+          "--formats", "wav_pcm16"])
+    out = tmp_path / "r.json"
+    code = main(["run", "--corpus-dir", str(corpus), "--out", str(out), "--repeat", "2",
+                 "--allow-missing", "--durations", "1", "--channels", "1",
+                 "--formats", "wav_pcm16"])
+    assert code == 0
+    records = json.loads(out.read_text())["records"]
+    assert any(r["library"] == "pedalboard" and r["status"] == "unavailable" for r in records)

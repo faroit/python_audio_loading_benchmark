@@ -46,7 +46,7 @@ not cold-disk I/O, and not real program material. See "Caveats" below.
 ## Quickstart
 
 ```bash
-uv sync --extra libs
+uv sync
 uv run pabench all
 ```
 
@@ -132,6 +132,28 @@ Both `stempeg` and `pydub` were measured before being removed; the numbers
 above are from this benchmark, not from reputation. Adding either back is a
 matter of restoring its probe in `pabench/loaders.py` and its entry in the
 `libs` optional-dependency group.
+
+## Where the corpus lives
+
+The corpus is generated and read from `--corpus-dir` (default `corpus/`), so pointing it
+at another disk benchmarks that disk's files:
+
+```shell
+uv run pabench all --corpus-dir /Volumes/fast-nvme/pabench-corpus
+```
+
+`PABENCH_CORPUS_DIR` supplies the default, so it does not have to be repeated across
+subcommands:
+
+```shell
+export PABENCH_CORPUS_DIR=/Volumes/fast-nvme/pabench-corpus
+uv run pabench gen && uv run pabench run && uv run pabench report --out results/report.md
+```
+
+Note that this changes which disk holds the files, not what is being measured. Every
+timing runs against a **warm page cache** by design — an untimed warmup call precedes the
+timed trials — because the question here is how fast each library *decodes*, not how fast
+the storage is. Cold-cache numbers would be dominated by I/O and would mostly rank disks.
 
 ## Correctness gate
 
@@ -250,7 +272,7 @@ exercises them.
 ## Development
 
 ```bash
-uv sync --extra libs --group test
+uv sync --group test
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .

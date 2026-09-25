@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -33,6 +34,10 @@ from pabench.run import run as run_benchmark
 from pabench.run import write_results
 from pabench.timing import DEFAULT_REPEAT
 
+#: Environment variable that supplies the default for `--corpus-dir`, so a corpus on
+#: another disk does not have to be named again on every subcommand.
+CORPUS_DIR_ENV = "PABENCH_CORPUS_DIR"
+
 _BENCH_CHOICES = ("full", "seek", "both")
 _FORMAT_CHOICES = tuple(fmt.key for fmt in FORMATS)
 
@@ -41,8 +46,12 @@ def _add_filter_args(parser: argparse.ArgumentParser) -> None:
     """`--corpus-dir`/`--durations`/`--channels`/`--formats`, shared by all four subcommands."""
     parser.add_argument(
         "--corpus-dir",
-        default="corpus",
-        help="directory holding the corpus (default: %(default)s)",
+        default=os.environ.get(CORPUS_DIR_ENV, "corpus"),
+        help=(
+            "directory holding the corpus (default: %(default)s; "
+            f"set {CORPUS_DIR_ENV} to change it without passing this flag). "
+            "Point it at another disk to generate and read the corpus there."
+        ),
     )
     parser.add_argument(
         "--durations",
@@ -101,10 +110,41 @@ def _cmd_gen(args: argparse.Namespace) -> int:
     return 0
 
 
+def _missing_libraries_message(loaders: list) -> str:
+    """Explain which libraries could not be loaded, and how to proceed."""
+    missing = [loader for loader in loaders if not loader.available]
+    lines = [
+        (
+            f"{len(missing)} of {len(loaders)} libraries could not be loaded, so this "
+            "run would compare a subset and report the rest as unavailable:"
+        ),
+        "",
+    ]
+    lines += [f"  {loader.name}: {loader.error}" for loader in missing]
+    lines += [
+        "",
+        (
+            "Install everything with `uv sync` (the libraries under test are required "
+            "dependencies, not an extra)."
+        ),
+        (
+            "If a library genuinely cannot be installed on this platform, re-run with "
+            "--allow-missing to benchmark the rest and record these as unavailable."
+        ),
+    ]
+    return "\n".join(lines)
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     specs = _select_specs(args)
     loaders = available_loaders(args.library)
     benches = _bench_tuple(args.bench)
+
+    # Refuse by default rather than publishing a report whose cells are mostly
+    # "unavailable": that reads as a benchmark result and is not one.
+    if not args.allow_missing and any(not loader.available for loader in loaders):
+        print(_missing_libraries_message(loaders), file=sys.stderr)
+        return 2
     try:
         results = run_benchmark(
             Path(args.corpus_dir),
@@ -221,6 +261,12 @@ def _build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--bench", choices=_BENCH_CHOICES, default="both")
     run_parser.add_argument("--repeat", type=int, default=DEFAULT_REPEAT)
     run_parser.add_argument("--out", default="results/results.json")
+    run_parser.add_argument(
+        "--allow-missing",
+        action="store_true",
+        help="benchmark the libraries that did load instead of refusing; the rest "
+        "are recorded as unavailable with their import errors",
+    )
     run_parser.set_defaults(func=_cmd_run)
 
     report_parser = subparsers.add_parser(
@@ -238,6 +284,12 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_filter_args(all_parser)
     all_parser.add_argument("--repeat", type=int, default=DEFAULT_REPEAT)
     all_parser.add_argument("--out", default="results/results.json")
+    all_parser.add_argument(
+        "--allow-missing",
+        action="store_true",
+        help="benchmark the libraries that did load instead of refusing; the rest "
+        "are recorded as unavailable with their import errors",
+    )
     all_parser.set_defaults(func=_cmd_all)
 
     return parser

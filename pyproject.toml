@@ -3,18 +3,14 @@ name = "pabench"
 version = "0.1.0"
 description = "Benchmark of Python audio loading libraries, decoding to torch tensors."
 requires-python = ">=3.12"
+# The libraries under test are REQUIRED, not optional: this project exists to compare
+# them, and a run that silently omits one produces a report full of "unavailable" rows
+# rather than a benchmark. Installing is `uv sync`, with no extra to remember.
 dependencies = [
     "numpy",
+    "matplotlib",
     "soundfile",
     "torch",
-    "matplotlib",
-]
-
-[project.scripts]
-pabench = "pabench.cli:console_main"
-
-[project.optional-dependencies]
-libs = [
     "librosa",
     "scipy",
     "audioread",
@@ -24,6 +20,9 @@ libs = [
     "audiosample",
     "sphn",
 ]
+
+[project.scripts]
+pabench = "pabench.cli:console_main"
 
 [dependency-groups]
 test = [

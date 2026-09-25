@@ -1301,21 +1301,17 @@ name = "pabench"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "soundfile" },
-    { name = "torch" },
-]
-
-[package.optional-dependencies]
-libs = [
     { name = "audiolab" },
     { name = "audioread" },
     { name = "audiosample" },
     { name = "librosa" },
+    { name = "matplotlib" },
+    { name = "numpy" },
     { name = "pedalboard" },
     { name = "scipy" },
+    { name = "soundfile" },
     { name = "sphn" },
+    { name = "torch" },
     { name = "torchcodec" },
 ]
 
@@ -1327,20 +1323,19 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "audiolab", marker = "extra == 'libs'" },
-    { name = "audioread", marker = "extra == 'libs'" },
-    { name = "audiosample", marker = "extra == 'libs'" },
-    { name = "librosa", marker = "extra == 'libs'" },
+    { name = "audiolab" },
+    { name = "audioread" },
+    { name = "audiosample" },
+    { name = "librosa" },
     { name = "matplotlib" },
     { name = "numpy" },
-    { name = "pedalboard", marker = "extra == 'libs'" },
-    { name = "scipy", marker = "extra == 'libs'" },
+    { name = "pedalboard" },
+    { name = "scipy" },
     { name = "soundfile" },
-    { name = "sphn", marker = "extra == 'libs'" },
+    { name = "sphn" },
     { name = "torch" },
-    { name = "torchcodec", marker = "extra == 'libs'" },
+    { name = "torchcodec" },
 ]
-provides-extras = ["libs"]
 
 [package.metadata.requires-dev]
 test = [

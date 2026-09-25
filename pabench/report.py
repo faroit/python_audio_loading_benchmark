@@ -202,12 +202,14 @@ def _noise_section(records: Records) -> str:
     min_pct = min(ratios) * 100
     max_pct = max(ratios) * 100
     return (
-        f"Across {len(ratios)} `ok` measurements, the observed spread "
-        "`(max - min) / median` ranges from "
+        f"Across {len(ratios)} `ok` measurements, the observed dispersion "
+        "`IQR / median` ranges from "
         f"{min_pct:.1f}% to {max_pct:.1f}%, with a median of {median_pct:.1f}%. "
         "That is the measurement-noise floor of this run: differences between "
         "libraries, formats, or durations smaller than this floor are noise, not "
-        "rankings."
+        "rankings. The interquartile range is reported rather than max-min because "
+        "the full range grows with the trial count, which would make runs using "
+        "different `--repeat` values incomparable."
     )
 
 
