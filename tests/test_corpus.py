@@ -163,3 +163,13 @@ def test_wav_is_not_probed_for_a_seektable(tmp_path):
     spec = CorpusSpec(duration_s=1, channels=1, fmt=Fmt("wav", "PCM_16"))
     path = generate(tmp_path, (spec,))[0]
     assert has_seektable(path) is False
+
+
+@pytest.mark.skipif(not metaflac_available(), reason="metaflac not installed")
+def test_flac_seektable_can_be_suppressed(tmp_path):
+    """The no-seektable case must be reproducible, not a matter of what is on PATH."""
+    spec = CorpusSpec(duration_s=1, channels=1, fmt=Fmt("flac", "PCM_16"))
+    with_table = generate(tmp_path / "with", (spec,))[0]
+    without = generate(tmp_path / "without", (spec,), flac_seektable=False)[0]
+    assert has_seektable(with_table)
+    assert not has_seektable(without)

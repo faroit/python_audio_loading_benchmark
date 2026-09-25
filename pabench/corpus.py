@@ -159,8 +159,20 @@ def generate(
     corpus_dir: Path,
     specs: tuple[CorpusSpec, ...] = DEFAULT_SPECS,
     seed: int = 0,
+    flac_seektable: bool = True,
 ) -> list[Path]:
-    """Generate every spec's audio file under `corpus_dir`, returning the written paths."""
+    """Generate every spec's audio file under `corpus_dir`, returning the written paths.
+
+    Args:
+        corpus_dir: Directory to write into; created if absent.
+        specs: Which files to generate.
+        seed: Base seed; each spec reseeds from it, so one regenerated file matches
+            the copy a full sweep would have produced.
+        flac_seektable: Add a SEEKTABLE to FLAC files when `metaflac` is available.
+            True matches a FLAC from the wild, which the reference encoder gives a
+            seektable. False leaves the libsndfile default of none, so a library has
+            to seek by binary search over frames -- set it to measure that difference.
+    """
     corpus_dir = Path(corpus_dir)
     corpus_dir.mkdir(parents=True, exist_ok=True)
 
@@ -173,7 +185,7 @@ def generate(
             _write_mp3(spec, data, dest)
         else:
             sf.write(str(dest), data, spec.sample_rate, subtype=spec.fmt.subtype)
-            if spec.fmt.container == "flac" and metaflac_available():
+            if spec.fmt.container == "flac" and flac_seektable and metaflac_available():
                 _add_seektable(dest)
 
         paths.append(dest)

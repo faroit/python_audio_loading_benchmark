@@ -32,7 +32,7 @@ import soundfile as sf
 import torch
 
 from pabench.canonical import to_tensor
-from pabench.corpus import DEFAULT_SPECS, CorpusSpec, corpus_files, metaflac_available
+from pabench.corpus import DEFAULT_SPECS, CorpusSpec, corpus_files, has_seektable
 from pabench.loaders import Loader
 from pabench.timing import DEFAULT_REPEAT, measure, realtime_factor
 from pabench.verify import compare, compare_seek
@@ -130,7 +130,22 @@ def _ffmpeg_version_line() -> str | None:
     return lines[0] if lines else None
 
 
-def platform_block(loaders: list[Loader]) -> dict:
+def _corpus_has_flac_seektables(corpus_dir: Path | None) -> bool | None:
+    """Whether the corpus's FLAC files actually carry seektables.
+
+    Read off the files rather than inferred from whether `metaflac` is installed:
+    a corpus can be generated with seektables suppressed, or carried over from
+    another machine, and the report should describe the files that were measured.
+    """
+    if corpus_dir is None:
+        return None
+    flacs = sorted(Path(corpus_dir).glob("*.flac"))
+    if not flacs:
+        return None
+    return all(has_seektable(path) for path in flacs)
+
+
+def platform_block(loaders: list[Loader], corpus_dir: Path | None = None) -> dict:
     """OS/interpreter/library facts worth recording alongside a set of results."""
     return {
         "os": _platform.platform(),
@@ -142,7 +157,7 @@ def platform_block(loaders: list[Loader]) -> dict:
         # are still valid but every library must seek by binary search, which is not
         # what a FLAC from the wild looks like, so the seek numbers mean something
         # different and the report says so.
-        "flac_seektables": metaflac_available(),
+        "flac_seektables": _corpus_has_flac_seektables(corpus_dir),
         "dyld_fallback_library_path": os.environ.get("DYLD_FALLBACK_LIBRARY_PATH"),
         "libraries": {
             loader.name: {
@@ -329,7 +344,7 @@ def run(
                 records.append(_build_record(loader, spec, path, bench, repeat, reference_for))
 
     return {
-        "platform": platform_block(loaders),
+        "platform": platform_block(loaders, corpus_dir),
         "records": [asdict(record) for record in records],
     }
 

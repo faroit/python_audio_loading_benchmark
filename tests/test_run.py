@@ -16,7 +16,7 @@ import soundfile as sf
 
 from pabench.corpus import CorpusSpec, Fmt, generate
 from pabench.loaders import Loader
-from pabench.run import Record, run, seek_offset, write_results
+from pabench.run import Record, platform_block, run, seek_offset, write_results
 
 WAV_PCM16 = Fmt("wav", "PCM_16")
 
@@ -334,3 +334,21 @@ def test_platform_block_includes_expected_keys(corpus_dir):
         assert key in platform
     assert "correct" in platform["libraries"]
     assert platform["libraries"]["correct"]["available"] is True
+
+
+def test_platform_block_reads_seektable_state_off_the_corpus(tmp_path):
+    """Reported from the files that were measured, not from whether metaflac exists."""
+    from pabench.corpus import CorpusSpec, Fmt, generate, metaflac_available
+
+    spec = CorpusSpec(duration_s=1, channels=1, fmt=Fmt("flac", "PCM_16"))
+    generate(tmp_path, (spec,), flac_seektable=False)
+    assert platform_block([], tmp_path)["flac_seektables"] is False
+
+    if metaflac_available():
+        other = tmp_path / "with"
+        generate(other, (spec,))
+        assert platform_block([], other)["flac_seektables"] is True
+
+
+def test_platform_block_reports_unknown_seektable_state_without_a_corpus():
+    assert platform_block([])["flac_seektables"] is None

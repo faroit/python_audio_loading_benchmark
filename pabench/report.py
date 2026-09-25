@@ -70,6 +70,17 @@ def _markdown_table(header: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
+def _seektable_label(value: bool | None) -> str | None:
+    """Describe the corpus's FLAC seektable state in words rather than a bare bool.
+
+    Which case was measured changes what a FLAC seek number means: with a seektable a
+    library jumps, without one it binary-searches the frames.
+    """
+    if value is None:
+        return None
+    return "present (seeking can jump)" if value else "absent (seeking must scan frames)"
+
+
 def _platform_table(platform: dict) -> str:
     fields = [
         ("OS", platform.get("os")),
@@ -78,6 +89,7 @@ def _platform_table(platform: dict) -> str:
         ("PyTorch", platform.get("torch_version")),
         ("FFmpeg", platform.get("ffmpeg_version")),
         ("DYLD_FALLBACK_LIBRARY_PATH", platform.get("dyld_fallback_library_path")),
+        ("FLAC seektables", _seektable_label(platform.get("flac_seektables"))),
     ]
     rows = [[label, str(value) if value is not None else "-"] for label, value in fields]
     return _markdown_table(["Field", "Value"], rows)
