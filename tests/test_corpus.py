@@ -9,6 +9,8 @@ from pabench.corpus import (
     corpus_files,
     ffmpeg_available,
     generate,
+    has_seektable,
+    metaflac_available,
 )
 
 
@@ -146,3 +148,18 @@ def test_generate_writes_nonempty_mp3(tmp_path):
 
 def test_ffmpeg_available_returns_bool():
     assert isinstance(ffmpeg_available(), bool)
+
+
+@pytest.mark.skipif(not metaflac_available(), reason="metaflac not installed")
+def test_generated_flac_carries_a_seektable(tmp_path):
+    """A FLAC from the wild has a SEEKTABLE; libsndfile alone writes none."""
+    spec = CorpusSpec(duration_s=1, channels=1, fmt=Fmt("flac", "PCM_16"))
+    path = generate(tmp_path, (spec,))[0]
+    assert has_seektable(path)
+
+
+def test_wav_is_not_probed_for_a_seektable(tmp_path):
+    """has_seektable only claims to understand FLAC; a WAV is simply not one."""
+    spec = CorpusSpec(duration_s=1, channels=1, fmt=Fmt("wav", "PCM_16"))
+    path = generate(tmp_path, (spec,))[0]
+    assert has_seektable(path) is False

@@ -32,7 +32,7 @@ import soundfile as sf
 import torch
 
 from pabench.canonical import to_tensor
-from pabench.corpus import DEFAULT_SPECS, CorpusSpec, corpus_files
+from pabench.corpus import DEFAULT_SPECS, CorpusSpec, corpus_files, metaflac_available
 from pabench.loaders import Loader
 from pabench.timing import DEFAULT_REPEAT, measure, realtime_factor
 from pabench.verify import compare, compare_seek
@@ -138,6 +138,11 @@ def platform_block(loaders: list[Loader]) -> dict:
         "python_version": _platform.python_version(),
         "torch_version": torch.__version__,
         "ffmpeg_version": _ffmpeg_version_line(),
+        # Whether the FLAC corpus carries SEEKTABLE blocks. Without metaflac the files
+        # are still valid but every library must seek by binary search, which is not
+        # what a FLAC from the wild looks like, so the seek numbers mean something
+        # different and the report says so.
+        "flac_seektables": metaflac_available(),
         "dyld_fallback_library_path": os.environ.get("DYLD_FALLBACK_LIBRARY_PATH"),
         "libraries": {
             loader.name: {

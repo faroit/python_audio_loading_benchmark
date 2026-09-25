@@ -17,6 +17,9 @@ from pathlib import Path
 import numpy as np
 import soundfile as sf
 
+#: FLAC metadata block type for SEEKTABLE.
+_FLAC_SEEKTABLE_BLOCK = 3
+
 SAMPLE_RATE = 44100
 PEAK_AMPLITUDE = 0.5
 DURATIONS_S: tuple[int, ...] = (1, 10, 60, 300)
@@ -94,6 +97,44 @@ def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None
 
 
+def metaflac_available() -> bool:
+    """Whether `metaflac` is on PATH, for writing FLAC SEEKTABLE blocks."""
+    return shutil.which("metaflac") is not None
+
+
+def has_seektable(path: Path) -> bool:
+    """Whether a FLAC file carries a SEEKTABLE metadata block."""
+    with open(path, "rb") as handle:
+        if handle.read(4) != b"fLaC":
+            return False
+        while True:
+            header = handle.read(4)
+            if len(header) < 4:
+                return False
+            last, block_type = header[0] >> 7, header[0] & 0x7F
+            if block_type == _FLAC_SEEKTABLE_BLOCK:
+                return True
+            if last:
+                return False
+            handle.seek(int.from_bytes(header[1:4], "big"), 1)
+
+
+def _add_seektable(dest: Path) -> None:
+    """Add one seekpoint per second, the layout the reference `flac` encoder writes.
+
+    libsndfile writes no SEEKTABLE, so a corpus built with `soundfile` alone would
+    make every library seek the hard way — binary search over frames — which is not
+    what a FLAC from the wild looks like. `metaflac` is the only tool at hand that
+    can add one; when it is absent the file is still valid and the run records that
+    its FLAC files had no seektable.
+    """
+    subprocess.run(
+        ["metaflac", "--add-seekpoint=1s", str(dest)],
+        check=True,
+        capture_output=True,
+    )
+
+
 def _write_mp3(spec: CorpusSpec, data: np.ndarray, dest: Path) -> None:
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_wav = Path(tmp_dir) / "source.wav"
@@ -132,6 +173,8 @@ def generate(
             _write_mp3(spec, data, dest)
         else:
             sf.write(str(dest), data, spec.sample_rate, subtype=spec.fmt.subtype)
+            if spec.fmt.container == "flac" and metaflac_available():
+                _add_seektable(dest)
 
         paths.append(dest)
 
