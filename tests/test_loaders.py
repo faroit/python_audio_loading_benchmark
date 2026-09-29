@@ -24,7 +24,14 @@ import soundfile as sf
 import torch
 
 from pabench.canonical import to_tensor
-from pabench.corpus import DEFAULT_SPECS, CorpusSpec, Fmt, ffmpeg_available, generate
+from pabench.corpus import (
+    DEFAULT_SPECS,
+    FORMATS,
+    CorpusSpec,
+    Fmt,
+    ffmpeg_available,
+    generate,
+)
 from pabench.loaders import PROBES, Loader, _smoke_test, available_loaders
 from pabench.verify import compare
 
@@ -43,16 +50,23 @@ EXPECTED_LOADER_NAMES = {
 
 # One representative Fmt per container, used for the per-loader round-trip/seek
 # tests (loader.formats only records containers, not wav bit depths).
+# One representative format per container, taken from FORMATS rather than rebuilt:
+# a reconstructed Fmt misses per-format fields (opus carries sample_rate=48000) and
+# would then compare unequal to the real corpus specs.
+#
+# Opus belongs in this matrix, not only in targeted unit tests: this is what checks
+# that each loader's declared `formats`/`seek_formats` match what the library can
+# actually do. A capability declared but broken would otherwise go unnoticed.
 REPRESENTATIVE_FMT: dict[str, Fmt] = {
-    "wav": Fmt("wav", "PCM_16"),
-    "flac": Fmt("flac", "PCM_16"),
-    "mp3": Fmt("mp3", "MP3"),
+    fmt.container: fmt
+    for fmt in FORMATS
+    if fmt.container not in {f.container for f in FORMATS[: FORMATS.index(fmt)]}
 }
 
 SEEK_START_S = 0.2
 SEEK_DURATION_S = 0.3
-# Lossy mp3 seeking can be off by a sample or two; everything else must be exact.
-MP3_SEEK_FRAME_TOLERANCE = 2
+# Lossy seeking (mp3, opus) can be off by a sample or two; everything else is exact.
+LOSSY_SEEK_FRAME_TOLERANCE = 2
 
 
 # ---- registry -----------------------------------------------------------------
@@ -221,7 +235,7 @@ def corpus_dir(tmp_path_factory) -> Path:
         for spec in DEFAULT_SPECS
         if spec.duration_s == 1
         and spec.fmt in REPRESENTATIVE_FMT.values()
-        and (spec.fmt.container != "mp3" or ffmpeg_available())
+        and (spec.fmt.container not in ("mp3", "opus") or ffmpeg_available())
     )
     generate(directory, specs=specs)
     return directory
@@ -274,7 +288,7 @@ BYTES_CASES = [
     ids=[f"{name}-{container}" for name, container in CONTAINER_CASES],
 )
 def test_full_decode_matches_reference_under_gate(loader_name, container, corpus_dir):
-    if container == "mp3" and not ffmpeg_available():
+    if container in ("mp3", "opus") and not ffmpeg_available():
         pytest.skip("ffmpeg not available to build the mp3 fixture")
 
     loader = ALL_LOADERS[loader_name]
@@ -295,7 +309,7 @@ def test_full_decode_matches_reference_under_gate(loader_name, container, corpus
     ids=[f"{name}-{container}" for name, container in SEEK_CASES],
 )
 def test_seek_returns_expected_frame_count(loader_name, container, corpus_dir):
-    if container == "mp3" and not ffmpeg_available():
+    if container in ("mp3", "opus") and not ffmpeg_available():
         pytest.skip("ffmpeg not available to build the mp3 fixture")
 
     loader = ALL_LOADERS[loader_name]
@@ -308,7 +322,7 @@ def test_seek_returns_expected_frame_count(loader_name, container, corpus_dir):
     actual_frames = tensor.shape[-1]
 
     expected_frames = round(SEEK_DURATION_S * spec.sample_rate)
-    tolerance = MP3_SEEK_FRAME_TOLERANCE if container == "mp3" else 0
+    tolerance = LOSSY_SEEK_FRAME_TOLERANCE if container in ("mp3", "opus") else 0
 
     assert abs(actual_frames - expected_frames) <= tolerance, (
         f"{loader_name}/{container}: expected ~{expected_frames} frames, got {actual_frames}"
@@ -327,7 +341,7 @@ def test_from_bytes_decode_matches_reference_under_gate(loader_name, container, 
     from `BYTES_CASES` entirely -- they are reported as `unsupported` for the bytes
     bench by `pabench.run`, not skipped here.
     """
-    if container == "mp3" and not ffmpeg_available():
+    if container in ("mp3", "opus") and not ffmpeg_available():
         pytest.skip("ffmpeg not available to build the mp3 fixture")
 
     loader = ALL_LOADERS[loader_name]
