@@ -19,7 +19,7 @@ Everything is loaded to a **`float32`, channels-first PyTorch tensor**, and ever
 | [`torchcodec`](https://github.com/pytorch/torchcodec) | yes | yes | yes | `get_samples_played_in_range` |
 | [`audiolab`](https://github.com/pengzhendong/audiolab) | yes | yes | yes | PyAV-backed; `load_audio` |
 | [`audiosample`](https://github.com/deepdub-ai/audiosample) | WAV only | yes | yes | slice by seconds; its PyAV path is incompatible with PyAV 18 |
-| [`sphn`](https://github.com/kyutai-labs/sphn) | yes | yes | no | Rust-backed; `sphn.read`; path only, no in-memory decode API |
+| [`sphn`](https://github.com/kyutai-labs/sphn) | yes | yes (not Opus) | no | Rust-backed; `sphn.read`; Opus decodes via `sphn.read_opus`, which is full-file only; path only, no in-memory decode API |
 
 A library qualifies if it installs with `uv` on Python 3.12 and imports cleanly. Every library is probed on each run; one that fails to load is reported with its error, never silently omitted.
 
@@ -43,7 +43,7 @@ Differences smaller than the noise floor stated in the report are not rankings. 
 
 ## Running the Benchmark
 
-Install [`uv`](https://docs.astral.sh/uv/) and the `ffmpeg` binary (used to encode the MP3 corpus), then:
+Install [`uv`](https://docs.astral.sh/uv/) and the `ffmpeg` binary (used to encode the MP3 and Opus corpus), then:
 
 ```shell
 uv sync
@@ -70,9 +70,9 @@ FFmpeg's shared libraries are located automatically for `torchcodec`; no environ
 - **seek** — decode a chunk from a fixed, seeded offset, at four chunk lengths: 1, 3, 10, and 30 s (skipping any chunk longer than the file).
 - **bytes** — decode the whole file from an in-memory buffer instead of a path; the file's bytes are read into memory once, before timing starts, so this measures decode-from-memory, not disk I/O.
 
-Corpus: 44.1 kHz, 1/10/60/300 s, mono and stereo, as 16-bit WAV, FLAC and MP3. Each timing is the median of N trials after one untimed warmup, against a warm page cache — the question is decode speed, not disk speed.
+Corpus: 44.1 kHz (48 kHz for Opus, since libopus only accepts 48/24/16/12/8 kHz), 1/10/60/300 s, mono and stereo, as 16-bit WAV, FLAC, MP3 and Opus (96 kbit/s). Each timing is the median of N trials after one untimed warmup, against a warm page cache — the question is decode speed, not disk speed.
 
-Correctness is gated per format: sample-exact for WAV and FLAC (within one LSB, since normalisation conventions differ between libraries), and a relaxed duration/RMS check for MP3, where decoders legitimately disagree about encoder delay. A library that fails has its timings withheld and the reason recorded.
+Correctness is gated per format: sample-exact for WAV and FLAC (within one LSB, since normalisation conventions differ between libraries), and a relaxed duration/RMS check for MP3 and Opus, where decoders legitimately disagree about encoder delay (MP3) or pre-skip (Opus). A library that fails has its timings withheld and the reason recorded.
 
 `docs/refactor-design.md` has the full rationale.
 

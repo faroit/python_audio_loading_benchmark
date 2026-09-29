@@ -2,9 +2,9 @@
 
 Every library's decode is compared against a `soundfile`-decoded reference before its
 timings are allowed to count. WAV and FLAC are graded sample-exact within a tolerance
-set by the source bit depth; MP3 cannot be compared sample-exact (decoders disagree
-about encoder delay), so it is graded by a relaxed length + level gate instead. See
-`docs/refactor-design.md` for the rationale.
+set by the source bit depth; MP3 and Opus cannot be compared sample-exact (decoders
+disagree about encoder delay/pre-skip), so they are graded by a relaxed length + level
+gate instead. See `docs/refactor-design.md` for the rationale.
 """
 
 from __future__ import annotations
@@ -26,8 +26,13 @@ _EXACT_TOLERANCES: dict[str, tuple[float, float]] = {
     "FLOAT": (1e-5, 1e-7),
 }
 
-_MP3_MAX_LENGTH_DIFF_S = 0.05
-_MP3_MAX_LEVEL_DIFF_DB = 0.5
+#: Containers graded by the relaxed length + level gate rather than sample-exact:
+#: mp3 disagrees on encoder delay, opus on pre-skip (sphn returns 960 extra samples
+#: -- 20 ms at 48 kHz -- where soundfile does not, for a 10 s file).
+_RELAXED_CONTAINERS = frozenset({"mp3", "opus"})
+
+_RELAXED_MAX_LENGTH_DIFF_S = 0.05
+_RELAXED_MAX_LEVEL_DIFF_DB = 0.5
 _MIN_RMS = 1e-12  # guards the relaxed gate's log ratio against a zero/near-zero RMS
 
 
@@ -52,14 +57,15 @@ def compare(
 ) -> VerifyResult:
     """Compare a candidate decode against the reference decode for `fmt`.
 
-    `sample_rate` is only used by the mp3 relaxed gate, to convert its 50 ms length
+    `sample_rate` is only used by the relaxed gate, to convert its 50 ms length
     allowance into samples; it defaults to the corpus's standard rate so existing call
-    sites are unaffected when the corpus isn't 44100 Hz.
+    sites are unaffected when the corpus isn't 44100 Hz (pass the resolved
+    `CorpusSpec.sample_rate` for a format, such as Opus, that overrides it).
 
     Raises `ValueError` if `fmt`'s subtype is not one this gate knows how to grade
-    (mp3 is always graded by the relaxed gate regardless of its subtype).
+    (mp3/opus are always graded by the relaxed gate regardless of their subtype).
     """
-    if fmt.container == "mp3":
+    if fmt.container in _RELAXED_CONTAINERS:
         return _compare_relaxed(reference, candidate, sample_rate)
     return _compare_exact(reference, candidate, fmt)
 
@@ -99,7 +105,7 @@ def _compare_relaxed(reference: object, candidate: object, sample_rate: int) -> 
 
     ref_frames = ref.shape[-1]
     cand_frames = cand.shape[-1]
-    max_diff_samples = _MP3_MAX_LENGTH_DIFF_S * sample_rate
+    max_diff_samples = _RELAXED_MAX_LENGTH_DIFF_S * sample_rate
     frame_diff = abs(ref_frames - cand_frames)
     if frame_diff > max_diff_samples:
         return VerifyResult(
@@ -130,10 +136,12 @@ def _compare_relaxed(reference: object, candidate: object, sample_rate: int) -> 
     else:
         level_diff_db = 20.0 * math.log10(cand_rms / ref_rms)
 
-    if abs(level_diff_db) > _MP3_MAX_LEVEL_DIFF_DB:
+    if abs(level_diff_db) > _RELAXED_MAX_LEVEL_DIFF_DB:
         return VerifyResult(
             ok=False,
-            reason=(f"level difference {level_diff_db:.2f} dB exceeds {_MP3_MAX_LEVEL_DIFF_DB} dB"),
+            reason=(
+                f"level difference {level_diff_db:.2f} dB exceeds {_RELAXED_MAX_LEVEL_DIFF_DB} dB"
+            ),
             gate="relaxed",
         )
 
@@ -165,7 +173,7 @@ def compare_seek(
         reference: Reference excerpt, channels-first.
         candidate: Candidate excerpt, channels-first.
         fmt: The corpus format, selecting the gate.
-        sample_rate: Sample rate, for the mp3 duration rule.
+        sample_rate: Sample rate, for the relaxed gate's duration rule.
         max_shift: Maximum frame offset to try in either direction.
 
     Returns:

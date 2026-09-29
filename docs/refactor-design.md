@@ -26,7 +26,7 @@ they set the requirements below:
 ## Scope
 
 In scope: full-file decode and seek (excerpt) decode, to torch tensors, over locally
-generated WAV/FLAC/MP3 files.
+generated WAV/FLAC/MP3/Opus files.
 
 Out of scope, deliberately: numpy and TensorFlow targets (removed), metadata-only
 benchmarks (the existing `benchmark_metadata.py` is dropped with the numpy harness),
@@ -38,16 +38,16 @@ Selected by one rule: it must install with `uv` on Python 3.12 and import cleanl
 
 | library | full-file | seek | notes |
 | --- | --- | --- | --- |
-| `soundfile` | yes | yes | libsndfile; the correctness reference |
+| `soundfile` | yes | yes | libsndfile; the correctness reference (also for Opus) |
 | `librosa` | yes | yes | 1.0.0; `offset=`/`duration=` |
 | `scipy.io.wavfile` | yes | no | WAV only, no seek API |
-| `scipy` memmap | yes | yes | seek is a memmap slice |
+| `scipy` memmap | yes | yes | seek is a memmap slice; WAV only |
 | `audioread` | yes | no | no native seek |
 | `pedalboard` | yes | yes | `AudioFile.seek` + `read` |
 | `torchcodec` | yes | yes | `get_samples_played_in_range` |
 | `audiolab` | yes | yes | PyAV-backed; `load_audio(offset=, duration=)` |
 | `audiosample` | WAV only | yes | its PyAV path is incompatible with PyAV 18 (`Flags.FAST_SEEK`); slice by seconds |
-| `sphn` | yes | yes | Rust-backed; `sphn.read(start_sec=, duration_sec=)` |
+| `sphn` | yes | yes, except Opus | Rust-backed; `sphn.read(start_sec=, duration_sec=)` for wav/flac/mp3. Opus decode dispatches to `sphn.read_opus`, since `sphn.read` raises on Opus; `read_opus` takes no start/duration arguments, so sphn has no seek for Opus (`Loader.seek_formats` excludes it) though it seeks the other three containers |
 
 Dropped, with reasons recorded in the README so the removals are not silent:
 
@@ -67,20 +67,29 @@ Dropped, with reasons recorded in the README so the removals are not silent:
 ### Seek benchmark membership
 
 `scipy` (non-memmap) and `audioread` have no seek API and are excluded from the
-seek benchmark rather than measured as read-everything-then-slice. The README states the
-exclusion and the reason, so their absence is not mistaken for an oversight.
+seek benchmark rather than measured as read-everything-then-slice. `sphn` seeks
+`wav`/`flac`/`mp3` but not `opus` (`sphn.read_opus` takes no start/duration
+arguments), so its seek record for Opus files is excluded the same way. The README
+states each exclusion and the reason, so their absence is not mistaken for an
+oversight.
 
 ## Corpus
 
 Generated locally, never committed. Seeded so a regenerated corpus is byte-identical.
 
-- Sample rate 44100.
+- Sample rate 44100, except `opus`: libopus only accepts 48/24/16/12/8 kHz, so Opus
+  is generated and decoded at 48000 Hz. `Fmt.sample_rate` overrides the corpus
+  default for a format that needs it, and `CorpusSpec.sample_rate` resolves from it,
+  so `frames`, the seek offset, reference slicing and `realtime_factor` all see the
+  rate the file is actually encoded at rather than a hardcoded 44100.
 - Durations 1, 10, 60, 300 s.
 - Channels: mono and stereo.
-- Formats: `wav` in `PCM_16` and `FLOAT`; `flac` (16-bit); `mp3` (CBR 192k).
+- Formats: `wav` in `PCM_16` and `FLOAT`; `flac` (16-bit); `mp3` (CBR 192k); `opus`
+  (96 kbit/s, 48 kHz).
 
-WAV and FLAC are written with `soundfile`; MP3 is encoded with the `ffmpeg` binary, which
-is the one non-Python prerequisite.
+WAV and FLAC are written with `soundfile`; MP3 and Opus are encoded with the `ffmpeg`
+binary, which is the one non-Python prerequisite (`-c:a libopus -b:a 96k` for Opus,
+following the MP3 encoding path).
 
 Bit depth remains an axis, as `PCM_16` versus `FLOAT`, because it changes the ranking and
 not merely the magnitude: FFmpeg-backed decoders are markedly slower converting 16-bit PCM
@@ -120,12 +129,15 @@ The gate is per-format, because one tolerance cannot be right for all three:
   normalisation conventions legitimately differ by one LSB between libraries (dividing by
   32767 versus 32768); it still rejects downmixing, truncation, channel swaps and any
   gain error above roughly 0.001 dB.
-- `mp3` — a relaxed gate. MP3 decoders disagree on encoder delay, so decoded lengths
-  differ by around a thousand samples and samples never match bit-for-bit. The gate
-  checks that the duration is within 50 ms of the reference and that the RMS level is
-  within 0.5 dB after trimming both signals to their common length. The report labels
-  MP3 results as graded by the relaxed gate, so the weaker guarantee is visible rather
-  than implied to be the same check.
+- `mp3`/`opus` — a relaxed gate. MP3 decoders disagree on encoder delay, so decoded
+  lengths differ by around a thousand samples; Opus decoders disagree on pre-skip
+  for the same reason (`sphn` returns 480960 samples where `soundfile` returns
+  480000 for a 10 s file — 960 samples, exactly 20 ms at 48 kHz). Neither format's
+  decoders match bit-for-bit. The gate checks that the duration is within 50 ms of
+  the reference and that the RMS level is within 0.5 dB after trimming both signals
+  to their common length. The report labels MP3 and Opus results as graded by the
+  relaxed gate, so the weaker guarantee is visible rather than implied to be the
+  same check as WAV/FLAC.
 
 ## Structure
 
@@ -165,7 +177,7 @@ benchmark.
 
 ## Prerequisites
 
-Python 3.12 and `uv`; the `ffmpeg` binary for MP3 encoding during corpus generation.
+Python 3.12 and `uv`; the `ffmpeg` binary for MP3/Opus encoding during corpus generation.
 
 FFmpeg's shared libraries are located automatically for `torchcodec`, which loads a
 native library built against a specific FFmpeg major (4 through 9). On macOS those

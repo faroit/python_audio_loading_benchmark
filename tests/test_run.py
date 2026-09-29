@@ -139,6 +139,24 @@ def _wrong_container_loader() -> Loader:
     )
 
 
+def _restricted_seek_formats_loader() -> Loader:
+    """Claims `wav` for `full`, like sphn claims `opus`, but seeks nothing -- like
+    sphn's `seek_formats` excluding `opus` while `formats` still includes it.
+    """
+    return Loader(
+        name="full_only_for_wav_seek",
+        layout="frames_first",
+        full=_soundfile_full,
+        seek=_soundfile_seek,
+        version="1.0",
+        available=True,
+        error=None,
+        formats=frozenset({"wav"}),
+        seek_formats=frozenset(),
+        notes=None,
+    )
+
+
 def _records_for(results: dict, library: str) -> list[dict]:
     return [r for r in results["records"] if r["library"] == library]
 
@@ -261,6 +279,23 @@ def test_seekless_loader_is_unsupported_for_seek_but_ok_for_full(corpus_dir):
     assert records["full"]["status"] == "ok"
     assert records["seek"]["status"] == "unsupported"
     assert records["seek"]["median_ms"] is None
+
+
+def test_loader_whose_seek_formats_excludes_a_container_is_unsupported_for_seek_only(
+    corpus_dir,
+):
+    """`seek` itself is not `None` here -- unlike the seekless-loader case above --
+    but the container isn't in `seek_formats`, mirroring sphn: it claims `opus` for
+    `full` but excludes it from `seek_formats` since `sphn.read_opus` takes no
+    start/duration arguments.
+    """
+    results = run(corpus_dir, [_restricted_seek_formats_loader()], specs=(_spec(10, 2),), repeat=2)
+    records = {r["bench"]: r for r in _records_for(results, "full_only_for_wav_seek")}
+    assert records["full"]["status"] == "ok"
+    assert records["full"]["median_ms"] is not None
+    assert records["seek"]["status"] == "unsupported"
+    assert records["seek"]["median_ms"] is None
+    assert "full_only_for_wav_seek" in records["seek"]["reason"]
 
 
 # ---- seek chunk-duration axis --------------------------------------------------

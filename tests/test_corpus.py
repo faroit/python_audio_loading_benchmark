@@ -14,20 +14,33 @@ from pabench.corpus import (
 )
 
 
-def test_formats_has_three_entries():
-    assert len(FORMATS) == 3
-    assert len(set(FORMATS)) == 3
-    assert {f.key for f in FORMATS} == {"wav_pcm16", "flac_pcm16", "mp3"}
+def test_formats_has_four_entries():
+    assert len(FORMATS) == 4
+    assert len(set(FORMATS)) == 4
+    assert {f.key for f in FORMATS} == {"wav_pcm16", "flac_pcm16", "mp3", "opus"}
 
 
 def test_fmt_key():
     assert Fmt("wav", "PCM_16").key == "wav_pcm16"
     assert Fmt("flac", "PCM_16").key == "flac_pcm16"
     assert Fmt("mp3", "MP3").key == "mp3"
+    assert Fmt("opus", "OPUS", sample_rate=48000).key == "opus"
+
+
+def test_fmt_sample_rate_defaults_to_none():
+    """`None` means "use the corpus default"; only Opus overrides it."""
+    assert Fmt("wav", "PCM_16").sample_rate is None
+    assert Fmt("flac", "PCM_16").sample_rate is None
+    assert Fmt("mp3", "MP3").sample_rate is None
+
+
+def test_opus_format_declares_48khz():
+    (opus,) = [f for f in FORMATS if f.container == "opus"]
+    assert opus.sample_rate == 48000
 
 
 def test_default_specs_axis_values():
-    assert len(DEFAULT_SPECS) == 24
+    assert len(DEFAULT_SPECS) == 32
 
     durations = {s.duration_s for s in DEFAULT_SPECS}
     channels = {s.channels for s in DEFAULT_SPECS}
@@ -36,12 +49,34 @@ def test_default_specs_axis_values():
     assert durations == {1, 10, 60, 300}
     assert channels == {1, 2}
     assert fmts == set(FORMATS)
-    assert all(s.sample_rate == 44100 for s in DEFAULT_SPECS)
+
+    non_opus_specs = [s for s in DEFAULT_SPECS if s.fmt.container != "opus"]
+    opus_specs = [s for s in DEFAULT_SPECS if s.fmt.container == "opus"]
+    assert len(opus_specs) == 8  # 4 durations x 2 channel counts
+    assert all(s.sample_rate == 44100 for s in non_opus_specs)
+    assert all(s.sample_rate == 48000 for s in opus_specs)
 
 
 def test_default_specs_are_unique_combinations():
     combos = {(s.duration_s, s.channels, s.fmt) for s in DEFAULT_SPECS}
-    assert len(combos) == 24
+    assert len(combos) == 32
+
+
+def test_corpus_spec_sample_rate_resolves_from_fmt_override():
+    """`CorpusSpec.sample_rate` reads `fmt.sample_rate` when the format overrides it,
+    and the corpus default (44100) otherwise -- both `frames` and every caller that
+    derives frame counts from a spec (`pabench.run.seek_offset`, reference slicing,
+    `pabench.verify.compare`'s `sample_rate=` argument) depend on this resolving
+    correctly for Opus.
+    """
+    default_spec = CorpusSpec(duration_s=10, channels=1, fmt=Fmt("wav", "PCM_16"))
+    opus_spec = CorpusSpec(duration_s=10, channels=1, fmt=Fmt("opus", "OPUS", sample_rate=48000))
+
+    assert default_spec.sample_rate == 44100
+    assert default_spec.frames == 10 * 44100
+
+    assert opus_spec.sample_rate == 48000
+    assert opus_spec.frames == 10 * 48000
 
 
 def test_filenames_unique():
@@ -144,6 +179,29 @@ def test_generate_writes_nonempty_mp3(tmp_path):
     info = sf.info(str(path))
     assert info.samplerate == spec.sample_rate
     assert info.channels == spec.channels
+
+
+@pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg is not available")
+def test_generate_writes_opus_at_48khz_with_expected_frame_count(tmp_path):
+    """Source noise is synthesized at 48 kHz (via `Fmt.sample_rate`), so libopus
+    encodes it without resampling and the decoded length is exactly
+    `duration_s * 48000`, not a resampling artefact.
+    """
+    spec = CorpusSpec(duration_s=1, channels=2, fmt=Fmt("opus", "OPUS", sample_rate=48000))
+    paths = generate(tmp_path, specs=(spec,), seed=0)
+
+    assert len(paths) == 1
+    path = paths[0]
+    assert path.exists()
+    assert path.stat().st_size > 0
+
+    info = sf.info(str(path))
+    assert info.samplerate == 48000
+    assert info.channels == spec.channels
+
+    data, sr = sf.read(str(path), dtype="float32", always_2d=True)
+    assert sr == 48000
+    assert data.shape[0] == spec.frames
 
 
 def test_ffmpeg_available_returns_bool():

@@ -1,4 +1,4 @@
-"""Deterministic generation of the WAV/FLAC/MP3 corpus used by the benchmark.
+"""Deterministic generation of the WAV/FLAC/MP3/Opus corpus used by the benchmark.
 
 Every file in the corpus is synthetic white noise, seeded per-spec so that
 regenerating a single file reproduces exactly the bytes it had inside a full
@@ -29,8 +29,14 @@ CHANNEL_COUNTS: tuple[int, ...] = (1, 2)
 
 @dataclass(frozen=True)
 class Fmt:
-    container: str  # "wav" / "flac" / "mp3"
-    subtype: str  # "PCM_16" / "MP3"
+    container: str  # "wav" / "flac" / "mp3" / "opus"
+    subtype: str  # "PCM_16" / "MP3" / "OPUS"
+    #: Overrides the corpus default sample rate for this format; `None` means "use
+    #: the corpus default" (`SAMPLE_RATE`). Opus sets this to 48000: libopus only
+    #: accepts 48/24/16/12/8 kHz, so encoding the corpus's default-rate noise would
+    #: silently resample it, and every decoder hands back 48 kHz audio regardless of
+    #: what a spec claiming 44100 would assume.
+    sample_rate: int | None = None
 
     @property
     def key(self) -> str:
@@ -44,6 +50,7 @@ FORMATS: tuple[Fmt, ...] = (
     Fmt("wav", "PCM_16"),
     Fmt("flac", "PCM_16"),
     Fmt("mp3", "MP3"),
+    Fmt("opus", "OPUS", sample_rate=48000),
 )
 
 
@@ -52,7 +59,19 @@ class CorpusSpec:
     duration_s: int
     channels: int
     fmt: Fmt
-    sample_rate: int = SAMPLE_RATE
+
+    @property
+    def sample_rate(self) -> int:
+        """The rate this spec's audio is actually generated/decoded at.
+
+        Resolves from `fmt.sample_rate` when the format overrides the corpus
+        default (Opus), otherwise the corpus default (`SAMPLE_RATE`). Everything
+        that derives frame counts or seconds-to-frame offsets from a spec --
+        `frames`, `pabench.run.seek_offset`, reference slicing, `realtime_factor`
+        -- reads this property, never the module-level `SAMPLE_RATE` directly, so
+        it is correct for every format in the corpus.
+        """
+        return self.fmt.sample_rate if self.fmt.sample_rate is not None else SAMPLE_RATE
 
     @property
     def filename(self) -> str:
@@ -178,6 +197,34 @@ def _write_mp3(spec: CorpusSpec, data: np.ndarray, dest: Path) -> None:
         )
 
 
+def _write_opus(spec: CorpusSpec, data: np.ndarray, dest: Path) -> None:
+    """Encode at 96 kbit/s with libopus, following `_write_mp3`'s pattern.
+
+    `data` is already synthesized at `spec.sample_rate` (48000 for Opus, see
+    `Fmt.sample_rate`), so libopus encodes it without resampling and the decoded
+    length comes back as exactly `duration_s * 48000` frames.
+    """
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_wav = Path(tmp_dir) / "source.wav"
+        sf.write(str(tmp_wav), data, spec.sample_rate, subtype="PCM_16")
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-loglevel",
+                "error",
+                "-i",
+                str(tmp_wav),
+                "-c:a",
+                "libopus",
+                "-b:a",
+                "96k",
+                str(dest),
+            ],
+            check=True,
+        )
+
+
 def generate(
     corpus_dir: Path,
     specs: tuple[CorpusSpec, ...] = DEFAULT_SPECS,
@@ -211,6 +258,8 @@ def generate(
 
         if spec.fmt.container == "mp3":
             _write_mp3(spec, data, dest)
+        elif spec.fmt.container == "opus":
+            _write_opus(spec, data, dest)
         else:
             sf.write(str(dest), data, spec.sample_rate, subtype=spec.fmt.subtype)
             if spec.fmt.container == "flac" and flac_seektable and metaflac_available():

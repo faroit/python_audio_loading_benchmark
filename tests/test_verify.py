@@ -9,6 +9,7 @@ WAV_PCM24 = Fmt("wav", "PCM_24")
 WAV_FLOAT = Fmt("wav", "FLOAT")
 FLAC_PCM16 = Fmt("flac", "PCM_16")
 MP3 = Fmt("mp3", "MP3")
+OPUS = Fmt("opus", "OPUS", sample_rate=48000)
 
 ATOL_PCM16 = 1.5 / 32768
 ATOL_PCM24 = 1.5 / 8388608
@@ -172,6 +173,35 @@ def test_mp3_length_gate_respects_explicit_sample_rate():
 
     assert at_corpus_rate.ok is True
     assert at_low_rate.ok is False
+
+
+# ---- relaxed gate: opus --------------------------------------------------------
+
+
+def test_opus_is_routed_to_the_relaxed_gate():
+    ref = _stereo_noise(15, frames=48000)
+    result = compare(ref, ref.copy(), OPUS, sample_rate=48000)
+    assert result.ok is True
+    assert result.gate == "relaxed"
+
+
+def test_opus_pre_skip_shift_passes():
+    """sphn returns 960 extra samples (20 ms at 48 kHz) versus soundfile for a 10 s
+    file -- well inside the 50 ms relaxed-gate allowance.
+    """
+    ref = _stereo_noise(16, frames=480000)  # 10 s at 48 kHz
+    candidate = np.concatenate([ref, ref[:, :960]], axis=1)  # simulate sphn's pre-skip
+    result = compare(ref, candidate, OPUS, sample_rate=48000)
+    assert result.ok is True
+    assert result.gate == "relaxed"
+
+
+def test_opus_level_error_fails_but_still_reports_relaxed_gate():
+    ref = _stereo_noise(17, frames=48000)
+    candidate = ref * 2.0  # +6 dB
+    result = compare(ref, candidate, OPUS, sample_rate=48000)
+    assert result.ok is False
+    assert result.gate == "relaxed"
 
 
 # ---- unknown format -----------------------------------------------------------

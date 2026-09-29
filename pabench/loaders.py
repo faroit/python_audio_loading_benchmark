@@ -44,6 +44,7 @@ _SMOKE_FRAMES = 800  # 100 ms
 _SMOKE_CHANNELS = 2
 
 _WAV_FLAC_MP3 = frozenset({"wav", "flac", "mp3"})
+_WAV_FLAC_MP3_OPUS = _WAV_FLAC_MP3 | {"opus"}
 _WAV_ONLY = frozenset({"wav"})
 
 
@@ -62,6 +63,17 @@ class Loader:
     #: means the library has no in-memory decode API; defaults to `None` so existing
     #: (and test-stub) loaders that don't care about this bench need not name it.
     from_bytes: Callable[[bytes], object] | None = None
+    #: Which containers `seek` actually supports; `None` means "same as `formats`".
+    #: Exists because a library can claim a container for `full` without being able
+    #: to seek it -- sphn decodes Opus (`full` dispatches to `sphn.read_opus`), but
+    #: `read_opus` takes no start/duration arguments, so sphn's `seek_formats`
+    #: excludes `opus` while still seeking wav/flac/mp3. Resolved to `formats` in
+    #: `__post_init__` so callers never see the `None` sentinel.
+    seek_formats: frozenset[str] | None = None
+
+    def __post_init__(self) -> None:
+        if self.seek_formats is None:
+            object.__setattr__(self, "seek_formats", self.formats)
 
 
 def _package_version(module: object, dist_name: str) -> str | None:
@@ -144,7 +156,7 @@ def _scale_to_float32(raw: np.ndarray) -> np.ndarray:
 def _probe_soundfile() -> Loader:
     name = "soundfile"
     layout: Layout = "frames_first"
-    formats = _WAV_FLAC_MP3
+    formats = _WAV_FLAC_MP3_OPUS
     notes = "the correctness reference every other loader is checked against"
     try:
         import soundfile as libsndfile
@@ -190,7 +202,7 @@ def _probe_soundfile() -> Loader:
 def _probe_librosa() -> Loader:
     name = "librosa"
     layout: Layout = "channels_first"
-    formats = _WAV_FLAC_MP3
+    formats = _WAV_FLAC_MP3_OPUS
     notes = None
     try:
         import librosa
@@ -308,7 +320,7 @@ def _probe_scipy_mmap() -> Loader:
 def _probe_audioread() -> Loader:
     name = "audioread"
     layout: Layout = "frames_first"
-    formats = _WAV_FLAC_MP3
+    formats = _WAV_FLAC_MP3_OPUS
     notes = (
         "full-file only, no seek API; audioread always yields 16-bit PCM buffers, "
         "so it cannot pass the exact gate for 24-bit or float32 WAV sources"
@@ -342,7 +354,7 @@ def _probe_audioread() -> Loader:
 def _probe_pedalboard() -> Loader:
     name = "pedalboard"
     layout: Layout = "channels_first"
-    formats = _WAV_FLAC_MP3
+    formats = _WAV_FLAC_MP3_OPUS
     notes = None
     try:
         import pedalboard
@@ -385,7 +397,7 @@ def _probe_pedalboard() -> Loader:
 def _probe_torchcodec() -> Loader:
     name = "torchcodec"
     layout: Layout = "channels_first"
-    formats = _WAV_FLAC_MP3
+    formats = _WAV_FLAC_MP3_OPUS
     notes = (
         "imports cleanly even when its native FFmpeg bindings can't load; only the "
         "decode smoke test below catches that (see docs/refactor-design.md)"
@@ -430,7 +442,7 @@ def _probe_torchcodec() -> Loader:
 def _probe_audiolab() -> Loader:
     name = "audiolab"
     layout: Layout = "channels_first"
-    formats = _WAV_FLAC_MP3
+    formats = _WAV_FLAC_MP3_OPUS
     notes = None
     try:
         import audiolab
@@ -473,10 +485,20 @@ def _probe_audiolab() -> Loader:
 def _probe_sphn() -> Loader:
     name = "sphn"
     layout: Layout = "channels_first"
-    formats = _WAV_FLAC_MP3
+    formats = _WAV_FLAC_MP3_OPUS
+    # sphn.read() raises on Opus ("unsupported feature: core (codec)"); Opus needs
+    # sphn.read_opus(path), which works but takes no start/duration arguments, so it
+    # is full-file only -- seek_formats excludes opus while full still claims it.
+    seek_formats = _WAV_FLAC_MP3
     notes = (
         "MP3 decode returns a different frame count than soundfile's reference "
-        "(decoder-delay disagreement); graded by the relaxed MP3 gate"
+        "(decoder-delay disagreement); graded by the relaxed MP3 gate. Opus decode "
+        "dispatches to sphn.read_opus (sphn.read raises on Opus), which returns 960 "
+        "extra samples -- 20 ms at 48 kHz -- versus soundfile's reference, also "
+        "graded by the relaxed gate; read_opus takes no start/duration arguments, so "
+        "sphn has no seek for Opus though it seeks wav/flac/mp3. sphn.read_opus_bytes "
+        "exists and works, but sphn has no in-memory decode for the other three "
+        "containers, so from_bytes is left unset rather than wired up for Opus alone"
     )
     try:
         import sphn
@@ -484,7 +506,10 @@ def _probe_sphn() -> Loader:
         return _unavailable(name, layout, formats, notes, exc)
 
     def full(path: Path) -> object:
-        data, _ = sphn.read(str(path))
+        if path.suffix == ".opus":
+            data, _ = sphn.read_opus(str(path))
+        else:
+            data, _ = sphn.read(str(path))
         return data
 
     def seek(path: Path, start_seconds: float, duration_seconds: float) -> object:
@@ -500,6 +525,7 @@ def _probe_sphn() -> Loader:
         available=True,
         error=None,
         formats=formats,
+        seek_formats=seek_formats,
         notes=notes,
     )
     return _smoke_test(loader)

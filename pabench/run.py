@@ -279,6 +279,18 @@ def _build_record(
             seek_seconds=chunk_seconds,
         )
 
+    # A loader's seek may not cover every container it decodes for `full` (sphn
+    # decodes Opus via a full-file-only entry point; see `Loader.seek_formats`).
+    if bench == "seek" and spec.fmt.container not in loader.seek_formats:
+        return _unmeasured(
+            library=loader.name,
+            spec=spec,
+            bench=bench,
+            status="unsupported",
+            reason=f"{loader.name} does not seek {spec.fmt.container!r} files",
+            seek_seconds=chunk_seconds,
+        )
+
     if bench == "bytes" and loader.from_bytes is None:
         return _unmeasured(
             library=loader.name,

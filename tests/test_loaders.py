@@ -125,6 +125,91 @@ def test_smoke_test_is_a_noop_for_an_already_unavailable_loader():
     assert _smoke_test(unavailable) == unavailable
 
 
+# ---- Loader.seek_formats --------------------------------------------------------
+
+
+def test_seek_formats_defaults_to_formats_when_unset():
+    loader = Loader(
+        name="x",
+        layout="frames_first",
+        full=lambda path: None,
+        seek=lambda path, start, dur: None,
+        version="0.0",
+        available=True,
+        error=None,
+        formats=frozenset({"wav", "flac"}),
+        notes=None,
+    )
+    assert loader.seek_formats == frozenset({"wav", "flac"})
+
+
+def test_seek_formats_can_be_narrower_than_formats():
+    loader = Loader(
+        name="x",
+        layout="frames_first",
+        full=lambda path: None,
+        seek=lambda path, start, dur: None,
+        version="0.0",
+        available=True,
+        error=None,
+        formats=frozenset({"wav", "opus"}),
+        seek_formats=frozenset({"wav"}),  # e.g. sphn: claims opus for full, not seek
+        notes=None,
+    )
+    assert loader.seek_formats == frozenset({"wav"})
+    assert "opus" not in loader.seek_formats
+    assert "opus" in loader.formats
+
+
+# ---- sphn's Opus dispatch --------------------------------------------------------
+
+
+def test_sphn_full_dispatches_to_read_opus_for_opus_files(monkeypatch):
+    """`sphn.read()` raises on Opus ("unsupported feature: core (codec)"); `full`
+    must call `sphn.read_opus()` for `.opus` files and `sphn.read()` for everything
+    else (see docs/refactor-design.md's capability matrix).
+    """
+    import numpy as np
+
+    sphn_module = pytest.importorskip("sphn")
+    from pabench.loaders import _probe_sphn
+
+    calls: list[str] = []
+
+    def fake_read_opus(path):
+        calls.append("read_opus")
+        return np.zeros((1, 4), dtype=np.float32), 48000
+
+    def fake_read(path, **kwargs):
+        calls.append("read")
+        return np.zeros((1, 4), dtype=np.float32), 48000
+
+    monkeypatch.setattr(sphn_module, "read_opus", fake_read_opus)
+    monkeypatch.setattr(sphn_module, "read", fake_read)
+
+    loader = _probe_sphn()
+    if not loader.available:
+        pytest.skip(f"sphn not available: {loader.error}")
+
+    calls.clear()  # discard the probe's own internal smoke-test call (a .wav file)
+    loader.full(Path("clip.opus"))
+    loader.full(Path("clip.wav"))
+
+    assert calls == ["read_opus", "read"]
+
+
+def test_sphn_seek_formats_excludes_opus():
+    from pabench.loaders import _probe_sphn
+
+    loader = _probe_sphn()
+    if not loader.available:
+        pytest.skip(f"sphn not available: {loader.error}")
+
+    assert "opus" in loader.formats
+    assert "opus" not in loader.seek_formats
+    assert {"wav", "flac", "mp3"} <= loader.seek_formats
+
+
 # ---- fixtures -------------------------------------------------------------------
 
 
@@ -172,7 +257,9 @@ def _container_cases() -> list[tuple[str, str]]:
 
 CONTAINER_CASES = _container_cases()
 SEEK_CASES = [
-    (name, container) for name, container in CONTAINER_CASES if ALL_LOADERS[name].seek is not None
+    (name, container)
+    for name, container in CONTAINER_CASES
+    if ALL_LOADERS[name].seek is not None and container in ALL_LOADERS[name].seek_formats
 ]
 BYTES_CASES = [
     (name, container)
