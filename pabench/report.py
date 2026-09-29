@@ -379,7 +379,14 @@ def _library_styles(style_order: list[str]) -> tuple[dict, dict]:
 
 
 def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[str]) -> Path:
-    """Render one bench as a seaborn FacetGrid: formats across, channels down."""
+    """Render one bench as a seaborn FacetGrid: formats across, a second axis down.
+
+    For `full` and `bytes` the rows are channel counts. For `seek` the rows are chunk
+    lengths and the data is restricted to stereo: a seek record is keyed by chunk
+    length as well as file duration, and drawing all four chunks on one line would
+    make seaborn aggregate them into a mean with a confidence band. A 30 s chunk takes
+    roughly thirty times as long as a 1 s one, so that mean describes nothing.
+    """
     plotted = [
         r
         for r in records
@@ -395,6 +402,10 @@ def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[s
         plt.close(fig)
         return out_path
 
+    by_chunk = bench == "seek" and any(r.get("seek_seconds") is not None for r in plotted)
+    if by_chunk:
+        plotted = [r for r in plotted if r["channels"] == max(x["channels"] for x in plotted)]
+
     frame = pd.DataFrame(
         [
             {
@@ -403,6 +414,7 @@ def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[s
                 "library": r["library"],
                 "format": r["format"],
                 "channels": f"{r['channels']}ch",
+                "chunk": f"{r['seek_seconds']:g}s chunk" if r.get("seek_seconds") else "",
             }
             for r in plotted
         ]
@@ -430,8 +442,12 @@ def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[s
         dashes=False,
         col="format",
         col_order=formats,
-        row="channels",
-        row_order=sorted({*frame["channels"]}),
+        row="chunk" if by_chunk else "channels",
+        row_order=(
+            sorted({*frame["chunk"]}, key=lambda s: float(s.split("s")[0]))
+            if by_chunk
+            else sorted({*frame["channels"]})
+        ),
         kind="line",
         markersize=5,
         linewidth=1.8,
@@ -449,8 +465,9 @@ def _plot_bench(records: Records, bench: str, out_dir: Path, style_order: list[s
     grid.figure.subplots_adjust(wspace=0.22, hspace=0.28)
     grid.set_axis_labels("duration (s)", "median (ms)")
     grid.set_titles(row_template="{row_name}", col_template="{col_name}")
+    subtitle = ", stereo" if by_chunk else ""
     grid.figure.suptitle(
-        f"{bench} decode: duration vs. median time (log-log, lower is better)",
+        f"{bench} decode{subtitle}: file duration vs. median time (log-log, lower is better)",
         y=1.02,
         color="#0b0b0b",
     )
